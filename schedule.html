@@ -640,6 +640,40 @@
     // ==========================================
     // 3. 從 PostgreSQL 同步更新清單、衝突偵測與週課表
     // ==========================================
+    async function normalizeAfternoonCourseTimes(courses, user) {
+        let updated = false;
+
+        for (const course of courses) {
+            if (user.role !== 'admin' && course.teacher_id !== user.user_id) continue;
+
+            const startParts = course.start_time.split(':');
+            const endParts = course.end_time.split(':');
+            if (Number(startParts[0]) < 13) continue;
+
+            const startTime = startParts[1] === '10'
+                ? `${startParts[0]}:30:00`
+                : course.start_time;
+            const endTime = Number(endParts[0]) > 13 && endParts[1] === '00'
+                ? `${endParts[0]}:20:00`
+                : course.end_time;
+
+            if (startTime === course.start_time && endTime === course.end_time) continue;
+
+            const updateRes = await fetch(`${API_BASE}/schedules/courses/${course.course_id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ start_time: startTime, end_time: endTime })
+            });
+            if (!updateRes.ok) {
+                const error = await updateRes.json();
+                throw new Error(error.detail || `課程 ${course.course_id} 更新失敗`);
+            }
+            updated = true;
+        }
+
+        return updated;
+    }
+
     async function refreshAllViews() {
         const user = getCurrentUser();
         if (!user) return;
@@ -650,6 +684,17 @@
             return;
         }
         dbCourses = await res.json();
+
+        try {
+            if (await normalizeAfternoonCourseTimes(dbCourses, user)) {
+                const updatedRes = await fetch(`${API_BASE}/schedules/courses`);
+                if (!updatedRes.ok) throw new Error('重新讀取課程資料失敗');
+                dbCourses = await updatedRes.json();
+            }
+        } catch (error) {
+            alert(`更新舊制午後課程時間失敗：${error.message}`);
+            return;
+        }
 
         renderCourseList(dbCourses, user);
         if (user.role === 'admin') {
