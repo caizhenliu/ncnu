@@ -201,11 +201,6 @@ def get_schedule_options():
             teachers = cur.fetchall()
 
     information_management_teachers = list(TEACHER_DIRECTORY)
-    information_management_teachers.extend(
-        teacher["full_name"]
-        for teacher in teachers
-        if teacher["full_name"] not in information_management_teachers
-    )
     teachers_by_department = {
         department: (
             information_management_teachers
