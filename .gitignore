@@ -1,0 +1,12 @@
+# 每個人自己的連線設定（含密碼），不要上傳
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 編輯器 / 工具
+.claude/
+.vscode/
