@@ -5,6 +5,75 @@ from database import get_db_connection
 
 router = APIRouter(prefix="/api/schedules", tags=["Schedule 課程排課模組"])
 
+TEACHER_DIRECTORY = [
+    "王育民",
+    "司馬添",
+    "白炳豐",
+    "余菁蓉",
+    "林妙聰",
+    "侯宏彬",
+    "姜美玲",
+    "洪嘉良",
+    "高竹諠",
+    "陳小芬",
+    "陳建宏",
+    "陳彥錚",
+    "游子宜",
+    "黃俊哲",
+    "練莊明",
+    "鄭育評",
+    "戴榮賦",
+    "簡宏宇",
+    "龔榮發",
+]
+
+DEPARTMENTS = [
+    "經濟學系",
+    "國際企業學系",
+    "資訊管理學系",
+    "財務金融學系",
+    "高階經營管理碩士學位學程",
+    "觀光休閒與餐旅管理學系觀光",
+    "觀光休閒與餐旅管理學系餐旅",
+    "兩岸高階主管經營管理境外碩士在職學位學程",
+    "新興產業策略與發展博士學位學程",
+    "新興產業策略與發展碩士學位學程",
+    "區域發展重點產業碩士專班",
+    "管理學院學士班",
+    "管理學院商業管理及資訊科技創新應用全英語碩士學位學程",
+    "管理學院",
+]
+
+SCHEDULE_ROOM_CODES = {
+    "M112",
+    "M113",
+    "M115",
+    "M203",
+    "M204",
+    "M206",
+    "M207",
+    "M210",
+    "M212",
+    "M213",
+    "M215",
+    "M217",
+    "M226",
+    "M228",
+    "M241",
+    "M251",
+    "M253",
+    "M255",
+    "M260",
+    "M268",
+    "M312",
+    "M320",
+    "M350",
+    "M432",
+    "M443",
+    "M451",
+    "M457",
+}
+
 class CourseCreate(BaseModel):
     course_name: str
     teacher_id: int
@@ -41,7 +110,26 @@ def get_schedule_options():
             )
             teachers = cur.fetchall()
 
-    return {"rooms": rooms, "teachers": teachers}
+    information_management_teachers = list(TEACHER_DIRECTORY)
+    information_management_teachers.extend(
+        teacher["full_name"]
+        for teacher in teachers
+        if teacher["full_name"] not in information_management_teachers
+    )
+    teachers_by_department = {
+        department: information_management_teachers if department == "資訊管理學系" else []
+        for department in DEPARTMENTS
+    }
+    return {
+        "rooms": rooms,
+        "schedule_rooms": [
+            room for room in rooms
+            if room["room_code"] in SCHEDULE_ROOM_CODES
+        ],
+        "teachers": teachers,
+        "departments": DEPARTMENTS,
+        "teachers_by_department": teachers_by_department,
+    }
 
 # 取得所有排課清單（同時把時間格式化為 HH:MM:SS 字串給前端 FullCalendar）
 @router.get("/courses")

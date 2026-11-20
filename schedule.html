@@ -391,8 +391,40 @@
 
     <!-- 右側欄：時間衝突警示（管理員）＋ 純星期週課表日曆 -->
     <div class="right-panel">
+        <div class="card" id="adminScheduleFilterCard" style="display:none;">
+            <h2>🔎 課表衝突查詢（管理員）</h2>
+            <div class="time-row">
+                <div class="form-group">
+                    <label>查詢方式</label>
+                    <select id="scheduleFilterType" onchange="updateScheduleFilterTargets()">
+                        <option value="room">教室課表查詢</option>
+                        <option value="teacher">教師課表查詢</option>
+                    </select>
+                </div>
+                <div class="form-group" id="scheduleRoomFilterGroup">
+                    <label>教室</label>
+                    <select id="scheduleRoomFilterTarget"></select>
+                </div>
+                <div class="form-group" id="scheduleDepartmentFilterGroup" style="display:none;">
+                    <label>系所</label>
+                    <select id="scheduleDepartmentFilterTarget" onchange="updateScheduleFilterTargets()"></select>
+                </div>
+                <div class="form-group" id="scheduleTeacherFilterGroup" style="display:none;">
+                    <label>教師</label>
+                    <select id="scheduleTeacherFilterTarget"></select>
+                </div>
+            </div>
+            <div style="display:flex; gap:8px;">
+                <button type="button" onclick="applyScheduleFilter()">查詢</button>
+                <button type="button" class="btn-secondary" onclick="clearScheduleFilter()">清除查詢</button>
+            </div>
+            <p style="color:#777; font-size:0.85rem; margin-bottom:0;">
+                目前只有資訊管理學系有教授名單；其他系所暫無教師選項。
+            </p>
+        </div>
+
         <div class="conflict-box" id="conflictSection" style="display:none;">
-            <h3>⚠️ 時間衝突課程清單（同星期、同教室、時段重疊）</h3>
+            <h3>⚠️ 時間衝突課程清單（同星期、同教室或同教師、時段重疊）</h3>
             <div id="conflictList"></div>
         </div>
 
@@ -468,6 +500,29 @@
         select.value = time;
     }
 
+    function removeExistingRoomOptions() {
+        const roomSelect = document.getElementById('roomId');
+        Array.from(roomSelect.options)
+            .filter(option => option.dataset.existingRoom === 'true')
+            .forEach(option => option.remove());
+    }
+
+    function setCourseRoom(roomId) {
+        const roomSelect = document.getElementById('roomId');
+        const roomValue = String(roomId);
+        if (!Array.from(roomSelect.options).some(option => option.value === roomValue)) {
+            const room = dbRooms.find(item => item.room_id === roomId);
+            if (room) {
+                const option = document.createElement('option');
+                option.value = roomValue;
+                option.textContent = `原排課教室（${room.room_code} - ${room.room_name}）`;
+                option.dataset.existingRoom = 'true';
+                roomSelect.appendChild(option);
+            }
+        }
+        roomSelect.value = roomValue;
+    }
+
     const ANCHOR_DATES = {
         1: '2026-11-16',
         2: '2026-11-17',
@@ -480,9 +535,14 @@
 
     // 從後端 PostgreSQL 載入的快取資料
     let dbRooms = [];
+    let dbScheduleRooms = [];
     let dbTeachers = [];
+    let dbDepartments = [];
+    let dbTeachersByDepartment = {};
     let dbCourses = [];
     let calendarInstance = null;
+    let activeScheduleFilter = null;
+    const normalizedCourseScopes = new Set();
 
     // ==========================================
     // 1. 共用登入、註冊、審核與登出邏輯
@@ -560,6 +620,7 @@
 
     function handleLogout() {
         localStorage.removeItem('se_user');
+        activeScheduleFilter = null;
         if (calendarInstance) {
             calendarInstance.destroy();
             calendarInstance = null;
@@ -593,33 +654,73 @@
     // ==========================================
     // 2. 初始化主畫面並從 PostgreSQL 讀取最新選項
     // ==========================================
+    async function fetchScheduleOptions() {
+        let lastError;
+
+        for (let attempt = 0; attempt < 3; attempt++) {
+            let response;
+            try {
+                response = await fetch(`${API_BASE}/schedules/options`);
+            } catch (error) {
+                lastError = error;
+            }
+
+            if (response && response.ok) {
+                try {
+                    return await response.json();
+                } catch (error) {
+                    lastError = error;
+                }
+            } else if (response) {
+                let detail = `HTTP ${response.status}`;
+                try {
+                    const errorBody = await response.json();
+                    detail = errorBody.detail || detail;
+                } catch {
+                    // Keep the HTTP status when the server does not return JSON.
+                }
+                lastError = new Error(detail);
+                if (response.status < 500) break;
+            }
+
+            if (attempt < 2) {
+                await new Promise(resolve => setTimeout(resolve, 300 * (attempt + 1)));
+            }
+        }
+
+        throw lastError || new Error('無法連線到選項 API');
+    }
+
     async function initPage(user) {
         document.getElementById('currentUserDisplay').textContent = `您好，${user.full_name}`;
         document.getElementById('currentRoleBadge').textContent = user.role === 'admin' ? '系統管理員' : '授課老師';
 
         try {
-            const optRes = await fetch(`${API_BASE}/schedules/options`);
-            if (!optRes.ok) throw new Error('選項 API 錯誤');
-            const optData = await optRes.json();
+            const optData = await fetchScheduleOptions();
             dbRooms = optData.rooms || [];
+            dbScheduleRooms = optData.schedule_rooms || dbRooms;
             dbTeachers = optData.teachers || [];
+            dbDepartments = optData.departments || [];
+            dbTeachersByDepartment = optData.teachers_by_department || {};
         } catch (err) {
-            alert('讀取資料庫教室與教師名單失敗，請檢查資料庫連線與資料表欄位！');
+            alert(`讀取教室與教師名單失敗：${err.message}`);
             return;
         }
 
         const roomSelect = document.getElementById('roomId');
-        roomSelect.innerHTML = dbRooms.map(r => 
+        roomSelect.innerHTML = dbScheduleRooms.map(r =>
             `<option value="${r.room_id}">${r.room_code} - ${r.room_name}</option>`
         ).join('');
 
         if (user.role === 'admin') {
             document.getElementById('teacherSelectGroup').style.display = 'block';
             document.getElementById('statusSelectGroup').style.display = 'block';
+            document.getElementById('adminScheduleFilterCard').style.display = 'block';
             document.getElementById('conflictSection').style.display = 'block';
             document.getElementById('userApprovalCard').style.display = 'block';
             document.getElementById('listTitle').textContent = '📋 所有老師課程總表（管理員）';
             document.getElementById('dragHint').textContent = '💡 管理員可直接拖曳方塊調整星期與時段';
+            updateScheduleFilterTargets();
 
             const teacherSelect = document.getElementById('teacherId');
             teacherSelect.innerHTML = dbTeachers.map(t => 
@@ -628,19 +729,20 @@
         } else {
             document.getElementById('teacherSelectGroup').style.display = 'none';
             document.getElementById('statusSelectGroup').style.display = 'none';
+            document.getElementById('adminScheduleFilterCard').style.display = 'none';
             document.getElementById('conflictSection').style.display = 'none';
             document.getElementById('userApprovalCard').style.display = 'none';
             document.getElementById('listTitle').textContent = '📋 我的排課清單（僅可調整本人課程）';
             document.getElementById('dragHint').textContent = '🔒 唯讀檢視（僅管理員可拖曳調整）';
         }
 
-        await refreshAllViews();
+        await refreshAllViews(true);
     }
 
     // ==========================================
     // 3. 從 PostgreSQL 同步更新清單、衝突偵測與週課表
     // ==========================================
-    async function normalizeAfternoonCourseTimes(courses, user) {
+    async function normalizeCourseTimes(courses, user) {
         let updated = false;
 
         for (const course of courses) {
@@ -648,16 +750,25 @@
 
             const startParts = course.start_time.split(':');
             const endParts = course.end_time.split(':');
-            if (Number(startParts[0]) < 13) continue;
+            const startHour = Number(startParts[0]);
+            const endHour = Number(endParts[0]);
+            let startTime = course.start_time;
+            let endTime = course.end_time;
 
-            const startTime = startParts[1] === '10'
-                ? `${startParts[0]}:30:00`
-                : course.start_time;
-            const endTime = Number(endParts[0]) > 13 && endParts[1] === '00'
-                ? `${endParts[0]}:20:00`
-                : course.end_time;
+            if (startHour < 13) {
+                if (startParts[1] !== '10') startTime = `${startParts[0]}:10:00`;
+                if (endHour <= 13 && endParts[1] !== '00') {
+                    endTime = `${endParts[0]}:00:00`;
+                }
+            } else {
+                if (startParts[1] === '10') startTime = `${startParts[0]}:30:00`;
+                if (endHour > 13 && endParts[1] === '00') {
+                    endTime = `${endParts[0]}:20:00`;
+                }
+            }
 
             if (startTime === course.start_time && endTime === course.end_time) continue;
+            if (startTime >= endTime) continue;
 
             const updateRes = await fetch(`${API_BASE}/schedules/courses/${course.course_id}`, {
                 method: 'PUT',
@@ -674,7 +785,104 @@
         return updated;
     }
 
-    async function refreshAllViews() {
+    function updateScheduleFilterTargets() {
+        const type = document.getElementById('scheduleFilterType').value;
+        const roomGroup = document.getElementById('scheduleRoomFilterGroup');
+        const departmentGroup = document.getElementById('scheduleDepartmentFilterGroup');
+        const teacherGroup = document.getElementById('scheduleTeacherFilterGroup');
+        roomGroup.style.display = type === 'room' ? 'block' : 'none';
+        departmentGroup.style.display = type === 'teacher' ? 'block' : 'none';
+        teacherGroup.style.display = type === 'teacher' ? 'block' : 'none';
+
+        const roomSelect = document.getElementById('scheduleRoomFilterTarget');
+        const selectedRoom = roomSelect.value ||
+            (activeScheduleFilter?.type === 'room' ? String(activeScheduleFilter.value) : '');
+        roomSelect.innerHTML = '<option value="">請選擇教室</option>' +
+            dbScheduleRooms.map(room =>
+                `<option value="${room.room_id}">${room.room_code} - ${room.room_name}</option>`
+            ).join('');
+        roomSelect.value = selectedRoom;
+
+        const departmentSelect = document.getElementById('scheduleDepartmentFilterTarget');
+        const selectedDepartment = departmentSelect.value ||
+            (activeScheduleFilter?.type === 'teacher' ? activeScheduleFilter.department : '');
+        departmentSelect.innerHTML = '<option value="">請選擇系所</option>' +
+            dbDepartments.map(department =>
+                `<option value="${department}">${department}</option>`
+            ).join('');
+        departmentSelect.value = selectedDepartment;
+
+        const teacherSelect = document.getElementById('scheduleTeacherFilterTarget');
+        const selectedTeacher = teacherSelect.value ||
+            (activeScheduleFilter?.type === 'teacher' &&
+                activeScheduleFilter.department === departmentSelect.value
+                ? activeScheduleFilter.value
+                : '');
+        const departmentTeachers = dbTeachersByDepartment[departmentSelect.value] || [];
+        teacherSelect.innerHTML = '<option value="">請選擇教師</option>' +
+            departmentTeachers.map(name => `<option value="${name}">${name}</option>`).join('');
+        teacherSelect.disabled = !departmentSelect.value;
+        teacherSelect.value = selectedTeacher;
+    }
+
+    function applyScheduleFilter() {
+        const type = document.getElementById('scheduleFilterType').value;
+        if (type === 'room') {
+            const value = Number(document.getElementById('scheduleRoomFilterTarget').value);
+            if (!value) {
+                alert('請先選擇教室！');
+                return;
+            }
+            activeScheduleFilter = { type, value };
+        } else {
+            const department = document.getElementById('scheduleDepartmentFilterTarget').value;
+            const value = document.getElementById('scheduleTeacherFilterTarget').value;
+            if (!department || !value) {
+                alert('請先選擇系所與教師！');
+                return;
+            }
+            activeScheduleFilter = { type, department, value };
+        }
+
+        if (!activeScheduleFilter) {
+            alert('請先選擇教室或教師！');
+            return;
+        }
+        renderScheduleView(dbCourses, getCurrentUser());
+    }
+
+    function clearScheduleFilter() {
+        activeScheduleFilter = null;
+        document.getElementById('scheduleFilterType').value = 'room';
+        document.getElementById('scheduleDepartmentFilterTarget').value = '';
+        document.getElementById('scheduleRoomFilterTarget').value = '';
+        document.getElementById('scheduleTeacherFilterTarget').value = '';
+        updateScheduleFilterTargets();
+        renderScheduleView(dbCourses, getCurrentUser());
+    }
+
+    function renderScheduleView(courses, user) {
+        let visibleCourses = courses;
+        if (activeScheduleFilter) {
+            visibleCourses = courses.filter(course =>
+                activeScheduleFilter.type === 'room'
+                    ? course.room_id === activeScheduleFilter.value
+                    : dbTeachers.find(teacher => teacher.user_id === course.teacher_id)?.full_name === activeScheduleFilter.value
+            );
+        }
+
+        if (user.role === 'admin') {
+            if (activeScheduleFilter && visibleCourses.length === 0) {
+                document.getElementById('conflictList').innerHTML =
+                    '<div style="color:#888; font-size:0.9rem;">目前查詢對象沒有已排課程資料。</div>';
+            } else {
+                renderConflictList(visibleCourses, activeScheduleFilter?.type || null);
+            }
+        }
+        renderCalendar(visibleCourses, user);
+    }
+
+    async function refreshAllViews(loadPendingUsers = false) {
         const user = getCurrentUser();
         if (!user) return;
 
@@ -685,25 +893,28 @@
         }
         dbCourses = await res.json();
 
-        try {
-            if (await normalizeAfternoonCourseTimes(dbCourses, user)) {
-                const updatedRes = await fetch(`${API_BASE}/schedules/courses`);
-                if (!updatedRes.ok) throw new Error('重新讀取課程資料失敗');
-                dbCourses = await updatedRes.json();
+        const normalizationScope = user.role === 'admin' ? 'admin' : `teacher:${user.user_id}`;
+        if (!normalizedCourseScopes.has(normalizationScope)) {
+            try {
+                if (await normalizeCourseTimes(dbCourses, user)) {
+                    const updatedRes = await fetch(`${API_BASE}/schedules/courses`);
+                    if (!updatedRes.ok) throw new Error('重新讀取課程資料失敗');
+                    dbCourses = await updatedRes.json();
+                }
+                normalizedCourseScopes.add(normalizationScope);
+            } catch (error) {
+                alert(`調整既有課程時間失敗：${error.message}`);
+                return;
             }
-        } catch (error) {
-            alert(`更新舊制午後課程時間失敗：${error.message}`);
-            return;
         }
 
         renderCourseList(dbCourses, user);
-        if (user.role === 'admin') {
-            renderConflictList(dbCourses);
+        if (user.role === 'admin' && loadPendingUsers) {
             const pendingRes = await fetch(`${API_BASE}/auth/pending-users`);
             const pendingList = await pendingRes.json();
             renderPendingUsers(pendingList);
         }
-        renderCalendar(dbCourses, user);
+        renderScheduleView(dbCourses, user);
     }
 
     function renderPendingUsers(pendingList) {
@@ -741,6 +952,8 @@
         const visibleCourses = user.role === 'admin' 
             ? courses 
             : courses.filter(c => c.teacher_id === user.user_id);
+        const roomById = new Map(dbRooms.map(room => [room.room_id, room]));
+        const teacherById = new Map(dbTeachers.map(teacher => [teacher.user_id, teacher]));
 
         if (visibleCourses.length === 0) {
             container.innerHTML = '<p style="color:#888; font-size:0.9rem;">目前尚無排課資料。</p>';
@@ -748,8 +961,8 @@
         }
 
         container.innerHTML = visibleCourses.map(c => {
-            const room = dbRooms.find(r => r.room_id === c.room_id);
-            const teacher = dbTeachers.find(t => t.user_id === c.teacher_id);
+            const room = roomById.get(c.room_id);
+            const teacher = teacherById.get(c.teacher_id);
             const roomLabel = room ? `${room.room_code} ${room.room_name}` : '未指定教室';
             const teacherLabel = teacher ? teacher.full_name : `老師ID:${c.teacher_id}`;
             const statusClass = c.schedule_status === 'assigned' ? 'status-assigned' : 'status-requested';
@@ -772,34 +985,65 @@
         }).join('');
     }
 
-    function renderConflictList(courses) {
+    function renderConflictList(courses, filterType = null) {
         const conflictDiv = document.getElementById('conflictList');
-        const conflicts = [];
+        const conflictMap = new Map();
+        const groups = new Map();
+        const roomById = new Map(dbRooms.map(room => [room.room_id, room]));
+        const teacherById = new Map(dbTeachers.map(teacher => [teacher.user_id, teacher]));
 
-        for (let i = 0; i < courses.length; i++) {
-            for (let j = i + 1; j < courses.length; j++) {
-                const a = courses[i];
-                const b = courses[j];
-                if (a.day_of_week === b.day_of_week && a.room_id === b.room_id && a.room_id !== null) {
-                    if (a.start_time < b.end_time && b.start_time < a.end_time) {
-                        conflicts.push({ a, b });
+        function addToGroup(key, course, reason) {
+            if (!groups.has(key)) groups.set(key, { courses: [], reason });
+            groups.get(key).courses.push(course);
+        }
+
+        for (const course of courses) {
+            if ((filterType === null || filterType === 'room') && course.room_id !== null) {
+                const room = roomById.get(course.room_id);
+                addToGroup(
+                    `room:${course.day_of_week}:${course.room_id}`,
+                    course,
+                    `教室 ${room?.room_code || '未指定'}`
+                );
+            }
+            if (filterType === null || filterType === 'teacher') {
+                const teacher = teacherById.get(course.teacher_id);
+                addToGroup(
+                    `teacher:${course.day_of_week}:${course.teacher_id}`,
+                    course,
+                    `教師 ${teacher?.full_name || `ID:${course.teacher_id}`}`
+                );
+            }
+        }
+
+        for (const { courses: group, reason } of groups.values()) {
+            group.sort((a, b) => a.start_time.localeCompare(b.start_time));
+            for (let i = 0; i < group.length; i++) {
+                for (let j = i + 1; j < group.length && group[j].start_time < group[i].end_time; j++) {
+                    const first = group[i];
+                    const second = group[j];
+                    const pairKey = [first.course_id, second.course_id].sort((a, b) => a - b).join(':');
+                    if (!conflictMap.has(pairKey)) {
+                        conflictMap.set(pairKey, { a: first, b: second, reasons: [] });
                     }
+                    const conflict = conflictMap.get(pairKey);
+                    if (!conflict.reasons.includes(reason)) conflict.reasons.push(reason);
                 }
             }
         }
 
+        const conflicts = Array.from(conflictMap.values());
         if (conflicts.length === 0) {
-            conflictDiv.innerHTML = '<div style="color:#2E7D32; font-size:0.9rem;">✅ 目前所有排課時段均無衝突！</div>';
+            conflictDiv.innerHTML = '<div style="color:#2E7D32; font-size:0.9rem;">✅ 目前查詢範圍內沒有時段衝突！</div>';
             return;
         }
 
-        conflictDiv.innerHTML = conflicts.map(({ a, b }) => {
-            const room = dbRooms.find(r => r.room_id === a.room_id);
+        conflictDiv.innerHTML = conflicts.map(({ a, b, reasons }) => {
             const tA = dbTeachers.find(u => u.user_id === a.teacher_id)?.full_name || '';
             const tB = dbTeachers.find(u => u.user_id === b.teacher_id)?.full_name || '';
             return `
                 <div class="conflict-item">
-                    <strong>教室 ${room?.room_code} 於每週「${DAY_NAMES[a.day_of_week]}」發生撞堂：</strong><br>
+                    <strong>${reasons.join('、')} 於每週「${DAY_NAMES[a.day_of_week]}」發生撞堂：</strong><br>
                     • 「${a.course_name}」(${tA})：${a.start_time.slice(0,5)} - ${a.end_time.slice(0,5)}<br>
                     • 「${b.course_name}」(${tB})：${b.start_time.slice(0,5)} - ${b.end_time.slice(0,5)}
                 </div>
@@ -807,13 +1051,29 @@
         }).join('');
     }
 
+    function snapToClassTime(date, isStart, notBefore = null) {
+        const timeKey = isStart ? 'start' : 'end';
+        const candidates = CLASS_PERIODS.map(period => {
+            const [hour, minute] = period[timeKey].split(':').map(Number);
+            return new Date(date.getFullYear(), date.getMonth(), date.getDate(), hour, minute);
+        }).filter(candidate => !notBefore || candidate > notBefore);
+
+        candidates.sort((a, b) => {
+            const distanceDifference = Math.abs(a - date) - Math.abs(b - date);
+            return distanceDifference || a - b;
+        });
+        return candidates[0] || null;
+    }
+
     function renderCalendar(courses, user) {
         const calendarEl = document.getElementById('calendar');
         const isAdmin = user.role === 'admin';
+        const roomById = new Map(dbRooms.map(room => [room.room_id, room]));
+        const teacherById = new Map(dbTeachers.map(teacher => [teacher.user_id, teacher]));
 
         const events = courses.map(c => {
-            const room = dbRooms.find(r => r.room_id === c.room_id);
-            const teacher = dbTeachers.find(u => u.user_id === c.teacher_id);
+            const room = roomById.get(c.room_id);
+            const teacher = teacherById.get(c.teacher_id);
             const anchorDate = ANCHOR_DATES[c.day_of_week];
             return {
                 id: String(c.course_id),
@@ -826,7 +1086,10 @@
         });
 
         if (calendarInstance) {
-            calendarInstance.destroy();
+            calendarInstance.removeAllEvents();
+            calendarInstance.addEventSource(events);
+            calendarInstance.setOption('editable', isAdmin);
+            return;
         }
 
         calendarInstance = new FullCalendar.Calendar(calendarEl, {
@@ -839,6 +1102,7 @@
             slotMinTime: '08:00:00',
             slotMaxTime: '22:30:00',
             slotDuration: '01:00:00',
+            snapDuration: '00:10:00',
             slotLabelContent: arg => {
                 const hour = arg.date.getHours();
                 const period = hour === 12
@@ -850,6 +1114,7 @@
             slotLabelClassNames: arg => arg.date.getHours() === 12 ? ['fc-timegrid-slot-lunch'] : [],
             allDaySlot: false,
             height: 'auto',
+            eventTimeFormat: { hour: '2-digit', minute: '2-digit', hour12: false },
             events: events,
             editable: isAdmin,
             eventDrop: handleCalendarDragOrResize,
@@ -863,23 +1128,57 @@
         const courseId = Number(info.event.id);
         const startObj = info.event.start;
         const endObj = info.event.end;
+        const snappedStart = snapToClassTime(startObj, true);
+        const snappedEnd = snapToClassTime(endObj || startObj, false, snappedStart);
 
-        const jsDay = startObj.getDay();
+        if (!snappedStart || !snappedEnd) {
+            info.revert();
+            alert('找不到符合節次規則的時間，請重新拖曳。');
+            return;
+        }
+
+        const jsDay = snappedStart.getDay();
         const newDayOfWeek = jsDay === 0 ? 7 : jsDay;
-        const newStart = startObj.toTimeString().slice(0, 8);
-        const newEnd = endObj ? endObj.toTimeString().slice(0, 8) : newStart;
+        const newStart = snappedStart.toTimeString().slice(0, 8);
+        const newEnd = snappedEnd.toTimeString().slice(0, 8);
 
-        await fetch(`${API_BASE}/schedules/courses/${courseId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                day_of_week: newDayOfWeek,
-                start_time: newStart,
-                end_time: newEnd
-            })
-        });
+        try {
+            const response = await fetch(`${API_BASE}/schedules/courses/${courseId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    day_of_week: newDayOfWeek,
+                    start_time: newStart,
+                    end_time: newEnd
+                })
+            });
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || '儲存課程時間失敗');
+            }
 
-        await refreshAllViews();
+            const course = dbCourses.find(item => item.course_id === courseId);
+            if (course) {
+                course.day_of_week = newDayOfWeek;
+                course.start_time = newStart;
+                course.end_time = newEnd;
+            }
+            info.event.setDates(snappedStart, snappedEnd);
+
+            const user = getCurrentUser();
+            renderCourseList(dbCourses, user);
+            if (user.role === 'admin') {
+                const visibleCourses = activeScheduleFilter
+                    ? dbCourses.filter(item => activeScheduleFilter.type === 'room'
+                        ? item.room_id === activeScheduleFilter.value
+                        : dbTeachers.find(teacher => teacher.user_id === item.teacher_id)?.full_name === activeScheduleFilter.value)
+                    : dbCourses;
+                renderConflictList(visibleCourses, activeScheduleFilter?.type || null);
+            }
+        } catch (error) {
+            info.revert();
+            alert(`課程時間更新失敗：${error.message}`);
+        }
     }
 
     // ==========================================
@@ -933,9 +1232,10 @@
         if (!course) return;
 
         removeExistingTimeOptions();
+        removeExistingRoomOptions();
         document.getElementById('editCourseId').value = course.course_id;
         document.getElementById('courseName').value = course.course_name;
-        document.getElementById('roomId').value = course.room_id;
+        setCourseRoom(course.room_id);
         document.getElementById('dayOfWeek').value = course.day_of_week;
         setCourseTime(startTimeSelect, course.start_time.slice(0, 5));
         setCourseTime(endTimeSelect, course.end_time.slice(0, 5));
@@ -959,6 +1259,7 @@
 
     function resetForm() {
         removeExistingTimeOptions();
+        removeExistingRoomOptions();
         document.getElementById('courseForm').reset();
         document.getElementById('editCourseId').value = '';
         document.getElementById('dayOfWeek').value = '3';
