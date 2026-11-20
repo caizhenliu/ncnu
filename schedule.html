@@ -77,6 +77,12 @@
             color: #8D6E63;
             border-bottom: 3px solid transparent;
             margin-bottom: -2px;
+            /* 點擊分頁時不要出現文字游標、反白或外框 */
+            user-select: none;
+            -webkit-user-select: none;
+            caret-color: transparent;
+            outline: none;
+            -webkit-tap-highlight-color: transparent;
         }
 
         .auth-tab.active {
