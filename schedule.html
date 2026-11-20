@@ -229,6 +229,18 @@
             color: var(--text-dark);
             padding: 8px 0 !important;
         }
+
+        .fc-timegrid-slot-label-frame {
+            line-height: 1.35;
+        }
+
+        .fc .fc-timegrid-slot {
+            height: 50px;
+        }
+
+        .fc .fc-timegrid-slot-lunch {
+            background-color: #B3E5FC !important;
+        }
     </style>
 </head>
 <body>
@@ -343,11 +355,11 @@
                 <div class="time-row">
                     <div class="form-group">
                         <label>開始時間</label>
-                        <input type="time" id="startTime" value="09:10" required>
+                        <select id="startTime" required></select>
                     </div>
                     <div class="form-group">
                         <label>結束時間</label>
-                        <input type="time" id="endTime" value="12:00" required>
+                        <select id="endTime" required></select>
                     </div>
                 </div>
 
@@ -409,6 +421,52 @@
         6: '星期六',
         7: '星期日'
     };
+
+    const CLASS_PERIODS = [
+        { code: 'a', start: '08:10', end: '09:00' },
+        { code: 'b', start: '09:10', end: '10:00' },
+        { code: 'c', start: '10:10', end: '11:00' },
+        { code: 'd', start: '11:10', end: '12:00' },
+        { code: 'e', start: '13:30', end: '14:20' },
+        { code: 'f', start: '14:30', end: '15:20' },
+        { code: 'g', start: '15:30', end: '16:20' },
+        { code: 'h', start: '16:30', end: '17:20' },
+        { code: 'i', start: '17:30', end: '18:20' },
+        { code: 'j', start: '18:30', end: '19:20' },
+        { code: 'k', start: '19:30', end: '20:20' },
+        { code: 'l', start: '20:30', end: '21:20' },
+        { code: 'm', start: '21:30', end: '22:20' }
+    ];
+
+    const startTimeSelect = document.getElementById('startTime');
+    const endTimeSelect = document.getElementById('endTime');
+    startTimeSelect.innerHTML = CLASS_PERIODS.map(period =>
+        `<option value="${period.start}">${period.code} 節（${period.start}）</option>`
+    ).join('');
+    endTimeSelect.innerHTML = CLASS_PERIODS.map(period =>
+        `<option value="${period.end}">${period.code} 節（${period.end}）</option>`
+    ).join('');
+    startTimeSelect.value = '09:10';
+    endTimeSelect.value = '12:00';
+
+    function removeExistingTimeOptions() {
+        [startTimeSelect, endTimeSelect].forEach(select => {
+            Array.from(select.options)
+                .filter(option => option.dataset.existingTime === 'true')
+                .forEach(option => option.remove());
+        });
+    }
+
+    function setCourseTime(select, time) {
+        if (!Array.from(select.options).some(option => option.value === time)) {
+            const option = document.createElement('option');
+            option.value = time;
+            option.textContent = `原排課時間（${time}）`;
+            option.dataset.existingTime = 'true';
+            select.appendChild(option);
+        }
+        select.value = time;
+    }
 
     const ANCHOR_DATES = {
         1: '2026-11-16',
@@ -730,12 +788,23 @@
             initialView: 'timeGridWeek',
             initialDate: '2026-11-16',
             firstDay: 1,
+            hiddenDays: [0, 6],
             headerToolbar: false,
-            dayHeaderFormat: { weekday: 'long' },
+            dayHeaderContent: arg => ['日', '一', '二', '三', '四', '五', '六'][arg.date.getDay()],
             slotMinTime: '08:00:00',
-            slotMaxTime: '22:00:00',
+            slotMaxTime: '22:30:00',
+            slotDuration: '01:00:00',
+            slotLabelContent: arg => {
+                const hour = arg.date.getHours();
+                const period = hour === 12
+                    ? 'z'
+                    : String.fromCharCode(hour < 12 ? 97 + hour - 8 : 101 + hour - 13);
+                return { html: `${hour} ~ ${hour + 1}<br>${period}` };
+            },
+            slotLaneClassNames: arg => arg.date.getHours() === 12 ? ['fc-timegrid-slot-lunch'] : [],
+            slotLabelClassNames: arg => arg.date.getHours() === 12 ? ['fc-timegrid-slot-lunch'] : [],
             allDaySlot: false,
-            height: 580,
+            height: 'auto',
             events: events,
             editable: isAdmin,
             eventDrop: handleCalendarDragOrResize,
@@ -818,12 +887,13 @@
         const course = dbCourses.find(c => c.course_id === courseId);
         if (!course) return;
 
+        removeExistingTimeOptions();
         document.getElementById('editCourseId').value = course.course_id;
         document.getElementById('courseName').value = course.course_name;
         document.getElementById('roomId').value = course.room_id;
         document.getElementById('dayOfWeek').value = course.day_of_week;
-        document.getElementById('startTime').value = course.start_time.slice(0, 5);
-        document.getElementById('endTime').value = course.end_time.slice(0, 5);
+        setCourseTime(startTimeSelect, course.start_time.slice(0, 5));
+        setCourseTime(endTimeSelect, course.end_time.slice(0, 5));
 
         if (getCurrentUser().role === 'admin') {
             document.getElementById('teacherId').value = course.teacher_id;
@@ -843,9 +913,12 @@
     }
 
     function resetForm() {
+        removeExistingTimeOptions();
         document.getElementById('courseForm').reset();
         document.getElementById('editCourseId').value = '';
         document.getElementById('dayOfWeek').value = '3';
+        startTimeSelect.value = '09:10';
+        endTimeSelect.value = '12:00';
         document.getElementById('formTitle').textContent = '➕ 登記 / 新增學期排課';
         document.getElementById('submitBtn').textContent = '送出排課';
         document.getElementById('cancelEditBtn').style.display = 'none';
