@@ -15,5 +15,5 @@
 ## 模組一：管院空間查詢（`/rooms`）
 - 網址：http://127.0.0.1:8001/rooms ，**不須登入**即可查詢教室、看平面圖與 360° 全景
 - 管理員登入後可新增 / 修改 / 刪除教室（仍有排課或借用紀錄的教室只能「停用」，不能刪除）
-- 後端：`rooms.py`（`/api/rooms`）；前端：`rooms.html`；全景照片放在 `static/pano/`
-- 教室資料：`db/002_rooms_ibs_seed.sql`（來自管院網站，只新增 / 更新，可重複執行）
+- 後端：`rooms.py`（`/api/rooms`）；前端：`rooms.html`；全景照片放在 `static/pano/`，樓層平面圖放在 `static/floorplan/`（目前有 2F、3F、4F；1F、B1 尚缺照片，暫用示意圖）
+- 教室資料：`db/002_rooms_ibs_seed.sql`（來自管院網站）；教室在平面圖上的位置：`db/004_floorplan_positions.sql`
