@@ -1,6 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from typing import Optional
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 from database import get_db_connection
+from sessions import create_session, revoke_session
 
 router = APIRouter(prefix="/api/auth", tags=["Auth 共用帳號"])
 
@@ -39,7 +41,13 @@ def login(data: LoginRequest):
     if user["account_status"] == "rejected":
         raise HTTPException(status_code=403, detail="您的帳號申請已被退件，請聯繫系統管理員。")
 
-    return user
+    return {"user": user, "token": create_session(user)}
+
+@router.post("/logout")
+def logout(authorization: Optional[str] = Header(default=None)):
+    if authorization and authorization.startswith("Bearer "):
+        revoke_session(authorization[7:])
+    return {"message": "已登出"}
 
 @router.post("/register")
 def register(data: RegisterRequest):

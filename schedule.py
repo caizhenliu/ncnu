@@ -1,7 +1,8 @@
 from typing import Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 from database import get_db_connection
+from sessions import get_session
 
 router = APIRouter(prefix="/api/schedules", tags=["Schedule 課程排課模組"])
 
@@ -26,6 +27,84 @@ TEACHER_DIRECTORY = [
     "簡宏宇",
     "龔榮發",
 ]
+
+TOURISM_TEACHER_DIRECTORY = [
+    "黃裕智",
+    "鄭健雄",
+    "戴有德",
+    "林士彥",
+    "楊明青",
+    "丁冰和",
+    "曾永平",
+    "葉明亮",
+    "曾喜鵬",
+    "吳淑玲",
+    "蔡宗伯",
+    "龎鳳嫺",
+    "伊香紅実",
+    "林國華",
+    "潘岱儒",
+    "陳國明",
+    "陳信村",
+    "陳瓊惠",
+    "宋承先",
+    "陳子洋",
+    "莊雅婷",
+    "龎龍",
+    "江侑姿",
+]
+
+DEPARTMENT_TEACHER_DIRECTORY = {
+    "經濟學系": [
+        "陳建良",
+        "欉清全",
+        "陳江明",
+        "葉家瑜",
+        "邱顯鴻",
+        "林佑龍",
+        "張德存",
+        "花國庭",
+    ],
+    "國際企業學系": [
+        "許秋萍",
+        "施信佑",
+        "王銘杰",
+        "胡毓彬",
+        "林欣美",
+        "駱世民",
+        "陳靜怡",
+        "莊文彬",
+        "吳淑貞",
+        "許文忠",
+        "張玉芳",
+        "佘日新",
+        "黃鴻鈞",
+        "梅筱珍",
+        "余建明",
+        "李巧琳",
+        "董美戀",
+        "康建民",
+        "蔣豐維",
+    ],
+    "財務金融學系": [
+        "賴雨聖",
+        "柯冠成",
+        "洪碧霞",
+        "王健安",
+        "戴維芯",
+        "張榮顯",
+        "葉家維",
+        "蘇昱翔",
+        "廖振傑",
+        "郭憲章",
+        "蔣淑芬",
+        "謝東昇",
+        "詹益錦",
+        "陳秀椿",
+    ],
+    "觀光休閒與餐旅管理學系觀光": TOURISM_TEACHER_DIRECTORY,
+    "觀光休閒與餐旅管理學系餐旅": TOURISM_TEACHER_DIRECTORY,
+}
 
 DEPARTMENTS = [
     "經濟學系",
@@ -92,6 +171,17 @@ class CourseUpdate(BaseModel):
     end_time: Optional[str] = None
     schedule_status: Optional[str] = None
 
+def get_current_schedule_user(authorization: Optional[str] = Header(default=None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="請先登入")
+
+    user = get_session(authorization[7:])
+    if not user:
+        raise HTTPException(status_code=401, detail="登入工作階段已失效，請重新登入")
+    if user["role"] not in ("admin", "teacher"):
+        raise HTTPException(status_code=403, detail="此功能僅限管理員與教師使用")
+    return user
+
 # 取得前端下拉選單需要的教室與已核准老師清單
 @router.get("/options")
 def get_schedule_options():
@@ -117,7 +207,11 @@ def get_schedule_options():
         if teacher["full_name"] not in information_management_teachers
     )
     teachers_by_department = {
-        department: information_management_teachers if department == "資訊管理學系" else []
+        department: (
+            information_management_teachers
+            if department == "資訊管理學系"
+            else DEPARTMENT_TEACHER_DIRECTORY.get(department, [])
+        )
         for department in DEPARTMENTS
     }
     return {
@@ -133,11 +227,10 @@ def get_schedule_options():
 
 # 取得所有排課清單（同時把時間格式化為 HH:MM:SS 字串給前端 FullCalendar）
 @router.get("/courses")
-def get_all_courses():
+def get_all_courses(current_user: dict = Depends(get_current_schedule_user)):
     with get_db_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """
+            query = """
                 SELECT
                     course_id,
                     course_name,
@@ -148,18 +241,25 @@ def get_all_courses():
                     TO_CHAR(end_time, 'HH24:MI:SS') AS end_time,
                     schedule_status
                 FROM courses
-                ORDER BY day_of_week ASC, start_time ASC
-                """
-            )
+            """
+            if current_user["role"] == "admin":
+                cur.execute(f"{query} ORDER BY day_of_week ASC, start_time ASC")
+            else:
+                cur.execute(
+                    f"{query} WHERE teacher_id = %s ORDER BY day_of_week ASC, start_time ASC",
+                    (current_user["user_id"],)
+                )
             return cur.fetchall()
 
 # 新增排課
 @router.post("/courses")
-def create_course(data: CourseCreate):
+def create_course(data: CourseCreate, current_user: dict = Depends(get_current_schedule_user)):
     if not (1 <= data.day_of_week <= 7):
         raise HTTPException(status_code=400, detail="星期必須介於 1 到 7 之間")
     if data.start_time >= data.end_time:
         raise HTTPException(status_code=400, detail="結束時間必須晚於開始時間")
+    if current_user["role"] != "admin" and data.teacher_id != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="教師只能新增自己的課程")
 
     with get_db_connection() as conn:
         with conn.cursor() as cur:
@@ -178,13 +278,27 @@ def create_course(data: CourseCreate):
 
 # 修改排課（支援表單完整修改，也支援管理員滑鼠 Drag & Drop 僅傳送 day_of_week, start_time, end_time）
 @router.put("/courses/{course_id}")
-def update_course(course_id: int, data: CourseUpdate):
+def update_course(
+    course_id: int,
+    data: CourseUpdate,
+    current_user: dict = Depends(get_current_schedule_user)
+):
     fields = data.model_dump(exclude_unset=True)
     if not fields:
         raise HTTPException(status_code=400, detail="沒有提供任何需要更新的欄位")
 
     with get_db_connection() as conn:
         with conn.cursor() as cur:
+            cur.execute("SELECT teacher_id FROM courses WHERE course_id = %s", (course_id,))
+            course = cur.fetchone()
+            if not course:
+                raise HTTPException(status_code=404, detail="找不到該筆課程資料")
+            if current_user["role"] != "admin":
+                if course["teacher_id"] != current_user["user_id"]:
+                    raise HTTPException(status_code=403, detail="教師只能修改自己的課程")
+                if fields.get("teacher_id", current_user["user_id"]) != current_user["user_id"]:
+                    raise HTTPException(status_code=403, detail="教師不能更改課程的授課老師")
+
             set_clauses = [f"{col} = %s" for col in fields.keys()]
             values = list(fields.values()) + [course_id]
 
@@ -206,9 +320,16 @@ def update_course(course_id: int, data: CourseUpdate):
 
 # 刪除排課
 @router.delete("/courses/{course_id}")
-def delete_course(course_id: int):
+def delete_course(course_id: int, current_user: dict = Depends(get_current_schedule_user)):
     with get_db_connection() as conn:
         with conn.cursor() as cur:
+            cur.execute("SELECT teacher_id FROM courses WHERE course_id = %s", (course_id,))
+            course = cur.fetchone()
+            if not course:
+                raise HTTPException(status_code=404, detail="找不到該筆課程資料")
+            if current_user["role"] != "admin" and course["teacher_id"] != current_user["user_id"]:
+                raise HTTPException(status_code=403, detail="教師只能刪除自己的課程")
+
             cur.execute("DELETE FROM courses WHERE course_id = %s RETURNING course_id", (course_id,))
             deleted = cur.fetchone()
             conn.commit()

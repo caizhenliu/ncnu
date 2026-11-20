@@ -260,7 +260,7 @@
     學期課程排課
   </a>
 </nav>
-    <h1>📅 管院空間與排課系統 — 學期課程排課模組</h1>
+    <h1>📅暨大管理學院課務系統</h1>
     <div class="user-bar" id="headerUserBar" style="display:none;">
         <span id="currentUserDisplay"></span>
         <span id="currentRoleBadge" class="badge"></span>
@@ -344,17 +344,17 @@
                 </div>
 
                 <div class="form-group" id="teacherSelectGroup" style="display:none;">
-                    <label>指派授課老師（管理員專屬）</label>
+                    <label>授課老師</label>
                     <select id="teacherId"></select>
                 </div>
 
                 <div class="form-group">
-                    <label>希望 / 指派教室</label>
+                    <label>教室</label>
                     <select id="roomId" required></select>
                 </div>
 
                 <div class="form-group">
-                    <label>上課星期</label>
+                    <label>日期</label>
                     <select id="dayOfWeek" required>
                         <option value="1">星期一 (Monday)</option>
                         <option value="2">星期二 (Tuesday)</option>
@@ -368,11 +368,11 @@
 
                 <div class="time-row">
                     <div class="form-group">
-                        <label>開始時間</label>
+                        <label>上課時間</label>
                         <select id="startTime" required></select>
                     </div>
                     <div class="form-group">
-                        <label>結束時間</label>
+                        <label>下課時間</label>
                         <select id="endTime" required></select>
                     </div>
                 </div>
@@ -432,9 +432,7 @@
                 <button type="button" onclick="applyScheduleFilter()">查詢</button>
                 <button type="button" class="btn-secondary" onclick="clearScheduleFilter()">清除查詢</button>
             </div>
-            <p style="color:#777; font-size:0.85rem; margin-bottom:0;">
-                目前只有資訊管理學系有教授名單；其他系所暫無教師選項。
-            </p>
+            
         </div>
 
         <div class="conflict-box" id="conflictSection" style="display:none;">
@@ -586,7 +584,8 @@
                 return;
             }
 
-            const matchedUser = await res.json();
+            const loginResult = await res.json();
+            const matchedUser = loginResult.user;
 
             if (matchedUser.role !== 'teacher' && matchedUser.role !== 'admin') {
                 alert(`您好 ${matchedUser.full_name}，您的身分為「學生」，課程排課模組僅限「授課老師」與「管理員」進入！`);
@@ -594,6 +593,7 @@
             }
 
             localStorage.setItem('se_user', JSON.stringify(matchedUser));
+            localStorage.setItem('se_token', loginResult.token);
             document.getElementById('loginForm').reset();
             checkAuthAndRender();
         } catch (err) {
@@ -632,8 +632,20 @@
         }
     }
 
-    function handleLogout() {
+    async function handleLogout() {
+        const token = localStorage.getItem('se_token');
+        if (token) {
+            try {
+                await fetch(`${API_BASE}/auth/logout`, {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+            } catch (error) {
+                alert(`登出伺服器工作階段失敗：${error.message}`);
+            }
+        }
         localStorage.removeItem('se_user');
+        localStorage.removeItem('se_token');
         activeScheduleFilter = null;
         if (calendarInstance) {
             calendarInstance.destroy();
@@ -647,8 +659,20 @@
         return saved ? JSON.parse(saved) : null;
     }
 
+    function getScheduleAuthHeaders(includeJsonContentType = false) {
+        const headers = {};
+        const token = localStorage.getItem('se_token');
+        if (token) headers.Authorization = `Bearer ${token}`;
+        if (includeJsonContentType) headers['Content-Type'] = 'application/json';
+        return headers;
+    }
+
     function checkAuthAndRender() {
-        const user = getCurrentUser();
+        let user = getCurrentUser();
+        if (user && !localStorage.getItem('se_token')) {
+            localStorage.removeItem('se_user');
+            user = null;
+        }
         const authSection = document.getElementById('authSection');
         const mainAppSection = document.getElementById('mainAppSection');
         const headerUserBar = document.getElementById('headerUserBar');
@@ -786,7 +810,7 @@
 
             const updateRes = await fetch(`${API_BASE}/schedules/courses/${course.course_id}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                headers: getScheduleAuthHeaders(true),
                 body: JSON.stringify({ start_time: startTime, end_time: endTime })
             });
             if (!updateRes.ok) {
@@ -810,12 +834,12 @@
 
         const roomSelect = document.getElementById('scheduleRoomFilterTarget');
         const selectedRoom = roomSelect.value ||
-            (activeScheduleFilter?.type === 'room' ? String(activeScheduleFilter.value) : '');
-        roomSelect.innerHTML = '<option value="">請選擇教室</option>' +
+            (activeScheduleFilter?.type === 'room' ? String(activeScheduleFilter.value) : 'all');
+        roomSelect.innerHTML = '<option value="all">所有教室</option>' +
             dbScheduleRooms.map(room =>
                 `<option value="${room.room_id}">${room.room_code} - ${room.room_name}</option>`
             ).join('');
-        roomSelect.value = selectedRoom;
+        roomSelect.value = selectedRoom || 'all';
 
         const departmentSelect = document.getElementById('scheduleDepartmentFilterTarget');
         const selectedDepartment = departmentSelect.value ||
@@ -842,7 +866,14 @@
     function applyScheduleFilter() {
         const type = document.getElementById('scheduleFilterType').value;
         if (type === 'room') {
-            const value = Number(document.getElementById('scheduleRoomFilterTarget').value);
+            const selectedRoom = document.getElementById('scheduleRoomFilterTarget').value;
+            if (selectedRoom === 'all') {
+                activeScheduleFilter = null;
+                renderScheduleView(dbCourses, getCurrentUser());
+                return;
+            }
+
+            const value = Number(selectedRoom);
             if (!value) {
                 alert('請先選擇教室！');
                 return;
@@ -869,15 +900,15 @@
         activeScheduleFilter = null;
         document.getElementById('scheduleFilterType').value = 'room';
         document.getElementById('scheduleDepartmentFilterTarget').value = '';
-        document.getElementById('scheduleRoomFilterTarget').value = '';
+        document.getElementById('scheduleRoomFilterTarget').value = 'all';
         document.getElementById('scheduleTeacherFilterTarget').value = '';
         updateScheduleFilterTargets();
         renderScheduleView(dbCourses, getCurrentUser());
     }
 
     function renderScheduleView(courses, user) {
-        let visibleCourses = courses;
-        if (activeScheduleFilter) {
+        let visibleCourses = coursesForUser(courses, user);
+        if (user.role === 'admin' && activeScheduleFilter) {
             visibleCourses = courses.filter(course =>
                 activeScheduleFilter.type === 'room'
                     ? course.room_id === activeScheduleFilter.value
@@ -896,24 +927,39 @@
         renderCalendar(visibleCourses, user);
     }
 
+    function coursesForUser(courses, user) {
+        return user.role === 'admin'
+            ? courses
+            : courses.filter(course => course.teacher_id === user.user_id);
+    }
+
     async function refreshAllViews(loadPendingUsers = false) {
         const user = getCurrentUser();
         if (!user) return;
 
-        const res = await fetch(`${API_BASE}/schedules/courses`);
+        const res = await fetch(`${API_BASE}/schedules/courses`, {
+            headers: getScheduleAuthHeaders()
+        });
+        if (res.status === 401) {
+            await handleLogout();
+            alert('登入工作階段已失效，請重新登入。');
+            return;
+        }
         if (!res.ok) {
             alert('讀取排課資料失敗，請確認資料庫 courses 表是否有 day_of_week 欄位！');
             return;
         }
-        dbCourses = await res.json();
+        dbCourses = coursesForUser(await res.json(), user);
 
         const normalizationScope = user.role === 'admin' ? 'admin' : `teacher:${user.user_id}`;
         if (!normalizedCourseScopes.has(normalizationScope)) {
             try {
                 if (await normalizeCourseTimes(dbCourses, user)) {
-                    const updatedRes = await fetch(`${API_BASE}/schedules/courses`);
+                    const updatedRes = await fetch(`${API_BASE}/schedules/courses`, {
+                        headers: getScheduleAuthHeaders()
+                    });
                     if (!updatedRes.ok) throw new Error('重新讀取課程資料失敗');
-                    dbCourses = await updatedRes.json();
+                    dbCourses = coursesForUser(await updatedRes.json(), user);
                 }
                 normalizedCourseScopes.add(normalizationScope);
             } catch (error) {
@@ -1159,7 +1205,7 @@
         try {
             const response = await fetch(`${API_BASE}/schedules/courses/${courseId}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                headers: getScheduleAuthHeaders(true),
                 body: JSON.stringify({
                     day_of_week: newDayOfWeek,
                     start_time: newStart,
@@ -1227,7 +1273,7 @@
 
         const res = await fetch(url, {
             method,
-            headers: { 'Content-Type': 'application/json' },
+            headers: getScheduleAuthHeaders(true),
             body: JSON.stringify(payload)
         });
 
@@ -1267,7 +1313,15 @@
     async function deleteCourse(courseId) {
         if (!confirm('確定要刪除這筆排課資料嗎？')) return;
 
-        await fetch(`${API_BASE}/schedules/courses/${courseId}`, { method: 'DELETE' });
+        const response = await fetch(`${API_BASE}/schedules/courses/${courseId}`, {
+            method: 'DELETE',
+            headers: getScheduleAuthHeaders()
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            alert(error.detail || '刪除課程失敗');
+            return;
+        }
         await refreshAllViews();
     }
 
