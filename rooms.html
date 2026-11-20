@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管院空間查詢 - 管院空間與排課系統</title>
+    <!-- Pannellum 360 全景瀏覽 https://pannellum.org/ -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css">
+    <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
+    <style>
+        :root {
+            --bg-cream: #FFF8E1;
+            --accent-pink: #F8BBD0;
+            --accent-pink-dark: #EC407A;
+            --text-dark: #4A3B32;
+            --text-soft: #8D6E63;
+            --card-bg: #FFFFFF;
+            --border-soft: #F3E5AB;
+            --danger-bg: #FFEBEE;
+            --danger-text: #C62828;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+            background-color: var(--bg-cream);
+            color: var(--text-dark);
+            margin: 0;
+        }
+
+        header {
+            background-color: var(--accent-pink);
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        }
+
+        header h1 { margin: 0; font-size: 1.4rem; }
+
+        .user-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+        .nav-link {
+            color: var(--text-dark);
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 0.9rem;
+            padding: 6px 12px;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.55);
+        }
+        .nav-link:hover { background: #FFF; }
+
+        .badge {
+            background: #FFF;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            color: var(--accent-pink-dark);
+        }
+
+        .container {
+            max-width: 1280px;
+            margin: 24px auto;
+            padding: 0 20px;
+            display: grid;
+            grid-template-columns: 360px 1fr;
+            gap: 24px;
+        }
+        @media (max-width: 960px) {
+            .container { grid-template-columns: 1fr; padding: 0 16px; }
+            header { padding: 12px 16px; }
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(74, 59, 50, 0.06);
+            border: 1px solid var(--border-soft);
+            margin-bottom: 20px;
+        }
+        .card h2 {
+            margin: 0 0 16px;
+            font-size: 1.15rem;
+            border-bottom: 2px solid var(--accent-pink);
+            padding-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .form-group { margin-bottom: 12px; }
+        .form-group label { display: block; font-size: 0.9rem; font-weight: bold; margin-bottom: 4px; }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 9px 10px;
+            border: 1px solid #DDD;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            font-family: inherit;
+        }
+        .form-group textarea { min-height: 90px; resize: vertical; }
+        .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+        button {
+            background-color: var(--accent-pink-dark);
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.95rem;
+            font-family: inherit;
+            transition: opacity 0.2s;
+        }
+        button:hover { opacity: 0.88; }
+        button.btn-secondary { background-color: var(--text-soft); }
+        button.btn-small { padding: 5px 10px; font-size: 0.8rem; }
+        button.btn-edit { background-color: #FB8C00; }
+        button.btn-danger { background-color: #E53935; }
+
+        /* 教室清單 */
+        .room-list { display: flex; flex-direction: column; gap: 8px; max-height: 640px; overflow-y: auto; }
+        .room-item {
+            border: 1px solid #EEE;
+            border-left: 5px solid var(--accent-pink);
+            border-radius: 10px;
+            padding: 10px 12px;
+            cursor: pointer;
+            background: #FFFDF8;
+            user-select: none;
+        }
+        .room-item:hover { background: #FFF3F7; }
+        .room-item.selected { border-left-color: var(--accent-pink-dark); background: #FFE4EE; }
+        .room-item.inactive { opacity: 0.55; border-left-color: #BBB; }
+        .room-item .title { font-weight: bold; }
+        .room-item .meta { font-size: 0.82rem; color: var(--text-soft); margin-top: 3px; }
+        .empty { color: var(--text-soft); font-size: 0.9rem; text-align: center; padding: 20px 0; }
+
+        /* 平面圖 */
+        .floor-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+        .floor-tab {
+            padding: 6px 14px;
+            border-radius: 20px;
+            border: 1px solid var(--accent-pink);
+            background: #FFF;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.88rem;
+            color: var(--text-soft);
+            user-select: none;
+        }
+        .floor-tab.active { background: var(--accent-pink-dark); border-color: var(--accent-pink-dark); color: #FFF; }
+
+        .floor-plan {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 2.2 / 1;
+            background: #FAFAFA;
+            border: 4px solid #6D4C41;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .floor-plan.picking { cursor: crosshair; outline: 3px dashed var(--accent-pink-dark); outline-offset: 3px; }
+        .plan-zone {
+            position: absolute;
+            left: 3%; right: 3%;
+            background: repeating-linear-gradient(45deg, #FFF8E1, #FFF8E1 10px, #FFF3D6 10px, #FFF3D6 20px);
+            border: 2px solid #D7CCC8;
+        }
+        .plan-zone.top { top: 6%; height: 36%; }
+        .plan-zone.bottom { bottom: 6%; height: 36%; }
+        .plan-corridor {
+            position: absolute;
+            left: 0; right: 0; top: 44%; height: 12%;
+            background: #ECEFF1;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.75rem; color: #90A4AE; letter-spacing: 6px;
+        }
+        .plan-core {
+            position: absolute;
+            top: 40%; height: 20%; width: 7%;
+            background: #CFD8DC;
+            border: 2px solid #90A4AE;
+            font-size: 0.7rem;
+            display: flex; align-items: center; justify-content: center;
+            text-align: center; color: #546E7A; line-height: 1.2;
+        }
+        .plan-label {
+            position: absolute; left: 8px; bottom: 4px;
+            font-size: 0.72rem; color: #A1887F;
+        }
+
+        .marker {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            background: #FFF;
+            border: 2px solid var(--accent-pink-dark);
+            color: var(--accent-pink-dark);
+            border-radius: 8px;
+            padding: 3px 7px;
+            font-size: 0.78rem;
+            font-weight: bold;
+            cursor: pointer;
+            white-space: nowrap;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.12);
+            user-select: none;
+            z-index: 2;
+        }
+        .marker:hover { z-index: 3; transform: translate(-50%, -50%) scale(1.08); }
+        .marker.selected { background: var(--accent-pink-dark); color: #FFF; z-index: 4; }
+        .marker.dim { opacity: 0.35; }
+        .marker.inactive { border-color: #9E9E9E; color: #9E9E9E; }
+        .marker.pin { background: #FB8C00; border-color: #FB8C00; color: #FFF; z-index: 5; pointer-events: none; }
+
+        /* 教室詳細資料 */
+        .detail-grid { display: grid; grid-template-columns: 1fr 1.4fr; gap: 20px; }
+        @media (max-width: 760px) { .detail-grid { grid-template-columns: 1fr; } }
+        .info-table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+        .info-table th { text-align: left; color: var(--text-soft); width: 84px; vertical-align: top; padding: 6px 0; font-weight: bold; }
+        .info-table td { padding: 6px 0; white-space: pre-line; line-height: 1.6; }
+        .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+        .chip { background: #FFF3E0; border: 1px solid #FFE0B2; border-radius: 12px; padding: 2px 9px; font-size: 0.8rem; }
+        .status-off { color: var(--danger-text); font-weight: bold; }
+
+        #panorama {
+            width: 100%;
+            height: 340px;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #EEE;
+        }
+        .pano-empty {
+            height: 340px;
+            border-radius: 12px;
+            border: 2px dashed #D7CCC8;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            color: var(--text-soft); text-align: center; padding: 20px; line-height: 1.7;
+        }
+        .placeholder-hint { font-size: 0.85rem; color: var(--text-soft); margin-top: 8px; }
+
+        /* 對話框 */
+        .modal-backdrop {
+            position: fixed; inset: 0;
+            background: rgba(74, 59, 50, 0.45);
+            display: none; align-items: flex-start; justify-content: center;
+            padding: 40px 16px; overflow-y: auto; z-index: 1000;
+        }
+        .modal-backdrop.open { display: flex; }
+        .modal { background: #FFF; border-radius: 16px; padding: 22px; width: 100%; max-width: 560px; }
+        .modal h3 { margin: 0 0 14px; }
+        .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+        .msg { padding: 8px 12px; border-radius: 8px; font-size: 0.88rem; margin-bottom: 10px; display: none; }
+        .msg.error { display: block; background: var(--danger-bg); color: var(--danger-text); }
+        .check-row { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; font-weight: bold; }
+        .check-row input { width: auto; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>🏫 管院空間與排課系統 — 管院空間查詢</h1>
+    <div class="user-bar">
+        <a class="nav-link" href="/">📅 排課模組</a>
+        <span id="userInfo" class="hidden"></span>
+        <button id="btnLogin" class="btn-secondary btn-small" onclick="openLogin()">管理員登入</button>
+        <button id="btnLogout" class="btn-secondary btn-small hidden" onclick="logout()">登出</button>
+    </div>
+</header>
+
+<div class="container">
+    <!-- 左側：搜尋與教室清單 -->
+    <div>
+        <div class="card">
+            <h2>🔍 查詢空間</h2>
+            <div class="form-group">
+                <label for="fKeyword">關鍵字</label>
+                <input id="fKeyword" placeholder="教室編號、名稱或設備（如：投影機）">
+            </div>
+            <div class="row-2">
+                <div class="form-group">
+                    <label for="fFloor">樓層</label>
+                    <select id="fFloor"><option value="">全部樓層</option></select>
+                </div>
+                <div class="form-group">
+                    <label for="fCapacity">至少容納</label>
+                    <select id="fCapacity">
+                        <option value="">不限</option>
+                        <option value="20">20 人以上</option>
+                        <option value="40">40 人以上</option>
+                        <option value="60">60 人以上</option>
+                        <option value="100">100 人以上</option>
+                    </select>
+                </div>
+            </div>
+            <label class="check-row hidden" id="inactiveRow">
+                <input type="checkbox" id="fInactive"> 顯示已停用的教室
+            </label>
+        </div>
+
+        <div class="card">
+            <h2>
+                <span>📋 教室列表 <small id="roomCount" style="color:var(--text-soft);font-weight:normal;"></small></span>
+                <button id="btnAdd" class="btn-small hidden" onclick="openRoomForm()">＋ 新增教室</button>
+            </h2>
+            <div class="room-list" id="roomList"><div class="empty">載入中…</div></div>
+        </div>
+    </div>
+
+    <!-- 右側：平面圖與教室詳細資料 -->
+    <div>
+        <div class="card">
+            <h2>🗺️ 管院平面圖</h2>
+            <div class="floor-tabs" id="floorTabs"></div>
+            <div class="floor-plan" id="floorPlan"></div>
+            <div class="placeholder-hint">點選平面圖上的教室可查看詳細資料。平面圖為示意配置，實際位置以現場為準。</div>
+        </div>
+
+        <div class="card" id="detailCard">
+            <h2>
+                <span id="detailTitle">📍 教室資訊</span>
+                <span id="detailActions" class="hidden">
+                    <button class="btn-small btn-edit" onclick="openRoomForm(selectedRoomId)">修改</button>
+                    <button class="btn-small btn-danger" onclick="deleteRoom(selectedRoomId)">刪除</button>
+                </span>
+            </h2>
+            <div id="detailBody"><div class="empty">請從左側列表或平面圖選擇一間教室</div></div>
+        </div>
+    </div>
+</div>
+
+<!-- 登入對話框 -->
+<div class="modal-backdrop" id="loginModal">
+    <div class="modal" style="max-width:400px;">
+        <h3>🔐 登入</h3>
+        <div class="msg" id="loginMsg"></div>
+        <form onsubmit="handleLogin(event)">
+            <div class="form-group">
+                <label for="loginUsername">帳號</label>
+                <input id="loginUsername" required autocomplete="username">
+            </div>
+            <div class="form-group">
+                <label for="loginPassword">密碼</label>
+                <input id="loginPassword" type="password" required autocomplete="current-password">
+            </div>
+            <div class="placeholder-hint">瀏覽空間不須登入；只有管理員可以新增、修改、刪除教室。</div>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" onclick="closeModal('loginModal')">取消</button>
+                <button type="submit">登入</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 新增 / 修改教室對話框（管理員） -->
+<div class="modal-backdrop" id="roomModal">
+    <div class="modal">
+        <h3 id="roomFormTitle">新增教室</h3>
+        <div class="msg" id="roomMsg"></div>
+        <form onsubmit="saveRoom(event)">
+            <div class="row-2">
+                <div class="form-group">
+                    <label for="rCode">教室編號</label>
+                    <input id="rCode" required maxlength="20" placeholder="例：M457">
+                </div>
+                <div class="form-group">
+                    <label for="rFloor">樓層</label>
+                    <input id="rFloor" required maxlength="20" placeholder="例：4F、B1" list="floorOptions">
+                    <datalist id="floorOptions">
+                        <option value="B1"><option value="1F"><option value="2F"><option value="3F"><option value="4F"><option value="5F">
+                    </datalist>
+                </div>
+            </div>
+            <div class="row-2">
+                <div class="form-group">
+                    <label for="rName">教室名稱</label>
+                    <input id="rName" required maxlength="100" placeholder="例：管457 一般教室">
+                </div>
+                <div class="form-group">
+                    <label for="rCapacity">容納人數</label>
+                    <input id="rCapacity" type="number" min="0" required value="40">
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="rEquipment">設備與說明</label>
+                <textarea id="rEquipment" placeholder="投影機、白板、冷氣…&#10;管理單位：…&#10;借用方式：…"></textarea>
+            </div>
+            <div class="form-group">
+                <label for="rPano">360 全景照片網址</label>
+                <input id="rPano" maxlength="255" placeholder="/static/pano/m457.jpg 或 https://…">
+            </div>
+            <div class="form-group">
+                <label>平面圖位置（%）</label>
+                <div class="row-2">
+                    <input id="rMapX" type="number" min="0" max="100" step="0.1" placeholder="X（左→右）">
+                    <input id="rMapY" type="number" min="0" max="100" step="0.1" placeholder="Y（上→下）">
+                </div>
+                <button type="button" class="btn-small btn-secondary" style="margin-top:8px;" onclick="startPicking()">📍 在平面圖上點選位置</button>
+            </div>
+            <label class="check-row"><input type="checkbox" id="rActive" checked> 開放使用（取消勾選＝停用，查詢時不顯示）</label>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" onclick="closeModal('roomModal')">取消</button>
+                <button type="submit">儲存</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    const API = '/api';
+    const FLOOR_ORDER = ['B1', '1F', '2F', '3F', '4F', '5F'];
+
+    let rooms = [];              // 目前查詢結果
+    let selectedRoomId = null;
+    let currentFloor = null;
+    let editingRoomId = null;
+    let picking = false;
+    let viewer = null;
+
+    // ---------- 共用工具 ----------
+    const escapeHtml = s => String(s ?? '').replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+
+    function getUser() {
+        try { return JSON.parse(localStorage.getItem('se_user')); } catch { return null; }
+    }
+    const isAdmin = () => getUser()?.role === 'admin';
+
+    async function api(path, options = {}) {
+        const user = getUser();
+        const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+        if (user) headers['X-User-Id'] = user.user_id;
+        const res = await fetch(API + path, { ...options, headers });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || '伺服器錯誤');
+        return data;
+    }
+
+    const floorSort = (a, b) => {
+        const ia = FLOOR_ORDER.indexOf(a), ib = FLOOR_ORDER.indexOf(b);
+        return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+    };
+
+    // ---------- 登入狀態 ----------
+    function renderAuth() {
+        const user = getUser();
+        const admin = isAdmin();
+        document.getElementById('userInfo').classList.toggle('hidden', !user);
+        document.getElementById('userInfo').innerHTML = user
+            ? `${escapeHtml(user.full_name)} <span class="badge">${admin ? '管理員' : user.role === 'teacher' ? '老師' : '學生'}</span>`
+            : '';
+        document.getElementById('btnLogin').classList.toggle('hidden', !!user);
+        document.getElementById('btnLogout').classList.toggle('hidden', !user);
+        document.getElementById('btnAdd').classList.toggle('hidden', !admin);
+        document.getElementById('inactiveRow').classList.toggle('hidden', !admin);
+        if (!admin) document.getElementById('fInactive').checked = false;
+    }
+
+    function openLogin() {
+        document.getElementById('loginMsg').className = 'msg';
+        openModal('loginModal');
+        document.getElementById('loginUsername').focus();
+    }
+
+    async function handleLogin(e) {
+        e.preventDefault();
+        const msg = document.getElementById('loginMsg');
+        try {
+            const user = await api('/auth/login', {
+                method: 'POST',
+                body: JSON.stringify({
+                    username: document.getElementById('loginUsername').value.trim(),
+                    password: document.getElementById('loginPassword').value
+                })
+            });
+            localStorage.setItem('se_user', JSON.stringify(user));   // 與其他模組共用登入狀態
+            e.target.reset();
+            closeModal('loginModal');
+            renderAuth();
+            loadRooms();
+        } catch (err) {
+            msg.textContent = err.message;
+            msg.className = 'msg error';
+        }
+    }
+
+    function logout() {
+        localStorage.removeItem('se_user');
+        renderAuth();
+        loadRooms();
+    }
+
+    // ---------- 載入資料 ----------
+    async function loadFloors() {
+        const floors = (await api('/rooms/floors')).sort(floorSort);
+        const sel = document.getElementById('fFloor');
+        sel.innerHTML = '<option value="">全部樓層</option>' +
+            floors.map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join('');
+    }
+
+    async function loadRooms() {
+        const params = new URLSearchParams();
+        const kw = document.getElementById('fKeyword').value.trim();
+        const floor = document.getElementById('fFloor').value;
+        const cap = document.getElementById('fCapacity').value;
+        if (kw) params.set('keyword', kw);
+        if (floor) params.set('floor', floor);
+        if (cap) params.set('min_capacity', cap);
+        if (isAdmin() && document.getElementById('fInactive').checked) params.set('include_inactive', 'true');
+
+        try {
+            rooms = await api('/rooms?' + params);
+        } catch (err) {
+            document.getElementById('roomList').innerHTML = `<div class="empty">無法載入教室資料：${escapeHtml(err.message)}</div>`;
+            return;
+        }
+
+        if (floor) currentFloor = floor;
+        const floors = [...new Set(rooms.map(r => r.floor))].sort(floorSort);
+        if (!floors.includes(currentFloor)) currentFloor = floors[0] ?? null;
+        if (selectedRoomId && !rooms.some(r => r.room_id === selectedRoomId)) selectRoom(null);
+
+        renderList();
+        renderFloorTabs(floors);
+        renderPlan();
+        if (selectedRoomId) renderDetail();
+    }
+
+    // ---------- 教室列表 ----------
+    function renderList() {
+        document.getElementById('roomCount').textContent = `（${rooms.length} 間）`;
+        const list = document.getElementById('roomList');
+        if (!rooms.length) {
+            list.innerHTML = '<div class="empty">找不到符合條件的教室</div>';
+            return;
+        }
+        const sorted = [...rooms].sort((a, b) => floorSort(a.floor, b.floor) || a.room_code.localeCompare(b.room_code));
+        list.innerHTML = sorted.map(r => `
+            <div class="room-item ${r.room_id === selectedRoomId ? 'selected' : ''} ${r.is_active ? '' : 'inactive'}"
+                 onclick="selectRoom(${r.room_id})">
+                <div class="title">${escapeHtml(r.room_name)}${r.is_active ? '' : '（停用）'}</div>
+                <div class="meta">${escapeHtml(r.room_code)} ｜ ${escapeHtml(r.floor)} ｜ 👥 ${r.capacity} 人${r.panorama_url ? ' ｜ 🌐 360°' : ''}</div>
+            </div>`).join('');
+    }
+
+    // ---------- 平面圖 ----------
+    function renderFloorTabs(floors) {
+        document.getElementById('floorTabs').innerHTML = floors.length
+            ? floors.map(f => `<div class="floor-tab ${f === currentFloor ? 'active' : ''}" onclick="switchFloor('${escapeHtml(f)}')">${escapeHtml(f)}</div>`).join('')
+            : '';
+    }
+
+    function switchFloor(f) {
+        currentFloor = f;
+        renderFloorTabs([...new Set(rooms.map(r => r.floor))].sort(floorSort));
+        renderPlan();
+    }
+
+    function renderPlan(pin) {
+        const plan = document.getElementById('floorPlan');
+        const onFloor = rooms.filter(r => r.floor === currentFloor && r.map_x != null && r.map_y != null);
+        plan.innerHTML = `
+            <div class="plan-zone top"></div>
+            <div class="plan-zone bottom"></div>
+            <div class="plan-corridor">走 廊</div>
+            <div class="plan-core" style="left:1%;">樓梯</div>
+            <div class="plan-core" style="right:1%;">電梯<br>樓梯</div>
+            <div class="plan-label">管理學院 ${escapeHtml(currentFloor ?? '')}（示意圖）</div>
+            ${onFloor.map(r => `
+                <div class="marker ${r.room_id === selectedRoomId ? 'selected' : ''} ${r.is_active ? '' : 'inactive'}"
+                     style="left:${r.map_x}%; top:${r.map_y}%;"
+                     title="${escapeHtml(r.room_name)}（${r.capacity} 人）"
+                     onclick="event.stopPropagation(); selectRoom(${r.room_id})">${escapeHtml(r.room_code)}</div>`).join('')}
+            ${pin ? `<div class="marker pin" style="left:${pin.x}%; top:${pin.y}%;">📍 新位置</div>` : ''}
+            ${!currentFloor ? '<div class="empty" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">沒有可顯示的樓層</div>' : ''}
+        `;
+    }
+
+    // ---------- 教室詳細資料 ----------
+    function selectRoom(id) {
+        selectedRoomId = id;
+        const room = rooms.find(r => r.room_id === id);
+        if (room && room.floor !== currentFloor) {
+            currentFloor = room.floor;
+            renderFloorTabs([...new Set(rooms.map(r => r.floor))].sort(floorSort));
+        }
+        renderList();
+        renderPlan();
+        renderDetail();
+        if (room && window.innerWidth <= 960) {
+            document.getElementById('detailCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }
+
+    function renderDetail() {
+        const room = rooms.find(r => r.room_id === selectedRoomId);
+        const body = document.getElementById('detailBody');
+        if (viewer) { viewer.destroy(); viewer = null; }
+        document.getElementById('detailActions').classList.toggle('hidden', !(room && isAdmin()));
+
+        if (!room) {
+            document.getElementById('detailTitle').textContent = '📍 教室資訊';
+            body.innerHTML = '<div class="empty">請從左側列表或平面圖選擇一間教室</div>';
+            return;
+        }
+
+        document.getElementById('detailTitle').textContent = `📍 ${room.room_name}`;
+        const lines = (room.equipment || '').split('\n');
+        const equipmentItems = (lines[0] || '').split(/[、,，]/).map(s => s.trim()).filter(Boolean);
+        const otherLines = lines.slice(1).filter(Boolean);
+
+        body.innerHTML = `
+            <div class="detail-grid">
+                <div>
+                    <table class="info-table">
+                        <tr><th>教室編號</th><td>${escapeHtml(room.room_code)}</td></tr>
+                        <tr><th>樓層</th><td>管理學院 ${escapeHtml(room.floor)}</td></tr>
+                        <tr><th>容納人數</th><td>${room.capacity} 人</td></tr>
+                        <tr><th>設備</th><td>${equipmentItems.length
+                            ? `<div class="chips">${equipmentItems.map(i => `<span class="chip">${escapeHtml(i)}</span>`).join('')}</div>`
+                            : '—'}</td></tr>
+                        ${otherLines.map(l => {
+                            const [k, ...v] = l.split('：');
+                            return v.length
+                                ? `<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(v.join('：'))}</td></tr>`
+                                : `<tr><th></th><td>${escapeHtml(l)}</td></tr>`;
+                        }).join('')}
+                        <tr><th>狀態</th><td>${room.is_active ? '開放使用' : '<span class="status-off">已停用</span>'}</td></tr>
+                    </table>
+                </div>
+                <div>
+                    ${room.panorama_url
+                        ? '<div id="panorama"></div><div class="placeholder-hint">🖱️ 拖曳可環顧四周，滾輪可縮放</div>'
+                        : '<div class="pano-empty">📷 這間教室還沒有 360° 全景照片<br><small>管理員可在「修改」中填入照片網址</small></div>'}
+                </div>
+            </div>`;
+
+        if (room.panorama_url && window.pannellum) {
+            viewer = pannellum.viewer('panorama', {
+                type: 'equirectangular',
+                panorama: room.panorama_url,
+                autoLoad: true,
+                autoRotate: -2,
+                showZoomCtrl: true,
+                compass: false,
+                strings: { loadingLabel: '載入中…', loadButtonLabel: '點擊載入全景' }
+            });
+        }
+    }
+
+    // ---------- 管理員：新增 / 修改 / 刪除 ----------
+    function openRoomForm(id) {
+        editingRoomId = id ?? null;
+        const r = rooms.find(x => x.room_id === id) || {};
+        document.getElementById('roomFormTitle').textContent = id ? `修改教室：${r.room_code}` : '新增教室';
+        document.getElementById('rCode').value = r.room_code ?? '';
+        document.getElementById('rFloor').value = r.floor ?? currentFloor ?? '';
+        document.getElementById('rName').value = r.room_name ?? '';
+        document.getElementById('rCapacity').value = r.capacity ?? 40;
+        document.getElementById('rEquipment').value = r.equipment ?? '';
+        document.getElementById('rPano').value = r.panorama_url ?? '';
+        document.getElementById('rMapX').value = r.map_x ?? '';
+        document.getElementById('rMapY').value = r.map_y ?? '';
+        document.getElementById('rActive').checked = r.is_active ?? true;
+        document.getElementById('roomMsg').className = 'msg';
+        openModal('roomModal');
+    }
+
+    async function saveRoom(e) {
+        e.preventDefault();
+        const num = id => {
+            const v = document.getElementById(id).value;
+            return v === '' ? null : Number(v);
+        };
+        const payload = {
+            room_code: document.getElementById('rCode').value.trim(),
+            room_name: document.getElementById('rName').value.trim(),
+            floor: document.getElementById('rFloor').value.trim(),
+            capacity: Number(document.getElementById('rCapacity').value),
+            equipment: document.getElementById('rEquipment').value.trim() || null,
+            panorama_url: document.getElementById('rPano').value.trim() || null,
+            map_x: num('rMapX'),
+            map_y: num('rMapY'),
+            is_active: document.getElementById('rActive').checked
+        };
+        try {
+            const saved = editingRoomId
+                ? await api(`/rooms/${editingRoomId}`, { method: 'PUT', body: JSON.stringify(payload) })
+                : await api('/rooms', { method: 'POST', body: JSON.stringify(payload) });
+            closeModal('roomModal');
+            selectedRoomId = saved.room_id;
+            currentFloor = saved.floor;
+            await loadFloors();
+            await loadRooms();
+        } catch (err) {
+            const msg = document.getElementById('roomMsg');
+            msg.textContent = err.message;
+            msg.className = 'msg error';
+        }
+    }
+
+    async function deleteRoom(id) {
+        const r = rooms.find(x => x.room_id === id);
+        if (!r || !confirm(`確定要刪除「${r.room_name}」嗎？刪除後無法復原。`)) return;
+        try {
+            await api(`/rooms/${id}`, { method: 'DELETE' });
+            selectRoom(null);
+            await loadFloors();
+            await loadRooms();
+        } catch (err) {
+            alert(err.message);
+        }
+    }
+
+    // 在平面圖上點選位置：暫時關閉表單，點完再打開
+    function startPicking() {
+        const floor = document.getElementById('rFloor').value.trim();
+        if (!floor) { alert('請先填寫樓層'); return; }
+        picking = true;
+        currentFloor = floor;
+        closeModal('roomModal');
+        renderFloorTabs([...new Set([...rooms.map(r => r.floor), floor])].sort(floorSort));
+        renderPlan();
+        const plan = document.getElementById('floorPlan');
+        plan.classList.add('picking');
+        plan.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    document.getElementById('floorPlan').addEventListener('click', e => {
+        if (!picking) return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        const x = +(((e.clientX - rect.left) / rect.width) * 100).toFixed(1);
+        const y = +(((e.clientY - rect.top) / rect.height) * 100).toFixed(1);
+        picking = false;
+        e.currentTarget.classList.remove('picking');
+        document.getElementById('rMapX').value = x;
+        document.getElementById('rMapY').value = y;
+        renderPlan({ x, y });
+        openModal('roomModal');
+    });
+
+    // ---------- 對話框 ----------
+    function openModal(id) { document.getElementById(id).classList.add('open'); }
+    function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') document.querySelectorAll('.modal-backdrop.open').forEach(m => m.classList.remove('open'));
+    });
+
+    // ---------- 篩選 ----------
+    let searchTimer;
+    document.getElementById('fKeyword').addEventListener('input', () => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(loadRooms, 250);
+    });
+    ['fFloor', 'fCapacity', 'fInactive'].forEach(id =>
+        document.getElementById(id).addEventListener('change', loadRooms));
+
+    // ---------- 初始化 ----------
+    renderAuth();
+    loadFloors().then(loadRooms).catch(err => {
+        document.getElementById('roomList').innerHTML = `<div class="empty">無法連線至後端：${escapeHtml(err.message)}</div>`;
+    });
+</script>
+</body>
+</html>
