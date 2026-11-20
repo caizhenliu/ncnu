@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>學期課程排課模組 - 管院空間與排課系統</title>
+    <!-- 引入 FullCalendar 週日曆與拖曳套件 -->
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+    <style>
+        :root {
+            --bg-cream: #FFF8E1;
+            --accent-pink: #F8BBD0;
+            --accent-pink-dark: #EC407A;
+            --text-dark: #4A3B32;
+            --card-bg: #FFFFFF;
+            --border-soft: #F3E5AB;
+            --danger-bg: #FFEBEE;
+            --danger-text: #C62828;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+            background-color: var(--bg-cream);
+            color: var(--text-dark);
+            margin: 0;
+            padding: 0;
+        }
+
+        header {
+            background-color: var(--accent-pink);
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 1.4rem;
+        }
+
+        .user-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .badge {
+            background: #FFF;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            color: var(--accent-pink-dark);
+        }
+
+        /* 登入 / 註冊畫面容器 */
+        .auth-wrapper {
+            max-width: 440px;
+            margin: 60px auto;
+            padding: 0 20px;
+        }
+
+        .auth-tabs {
+            display: flex;
+            margin-bottom: 18px;
+            border-bottom: 2px solid #F3E5AB;
+        }
+
+        .auth-tab {
+            flex: 1;
+            text-align: center;
+            padding: 10px;
+            cursor: pointer;
+            font-weight: bold;
+            color: #8D6E63;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+        }
+
+        .auth-tab.active {
+            color: var(--accent-pink-dark);
+            border-bottom-color: var(--accent-pink-dark);
+        }
+
+        .demo-hint-box {
+            background: #FFFDE7;
+            border: 1px dashed #FBC02D;
+            border-radius: 10px;
+            padding: 12px;
+            margin-top: 16px;
+            font-size: 0.85rem;
+            line-height: 1.6;
+        }
+
+        /* 主系統容器 */
+        .container {
+            max-width: 1280px;
+            margin: 24px auto;
+            padding: 0 20px;
+            display: grid;
+            grid-template-columns: 380px 1fr;
+            gap: 24px;
+        }
+
+        @media (max-width: 960px) {
+            .container { grid-template-columns: 1fr; }
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(74, 59, 50, 0.06);
+            border: 1px solid var(--border-soft);
+            margin-bottom: 20px;
+        }
+
+        .card h2 {
+            margin-top: 0;
+            font-size: 1.15rem;
+            border-bottom: 2px solid var(--accent-pink);
+            padding-bottom: 8px;
+            margin-bottom: 16px;
+        }
+
+        .form-group {
+            margin-bottom: 12px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.9rem;
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 9px 10px;
+            border: 1px solid #DDD;
+            border-radius: 8px;
+            box-sizing: border-box;
+            font-size: 0.95rem;
+        }
+
+        .time-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        button {
+            background-color: var(--accent-pink-dark);
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.95rem;
+            transition: opacity 0.2s;
+        }
+
+        button:hover { opacity: 0.88; }
+        button.btn-secondary { background-color: #8D6E63; }
+        button.btn-danger { background-color: #E53935; padding: 5px 10px; font-size: 0.8rem; }
+        button.btn-edit { background-color: #FB8C00; padding: 5px 10px; font-size: 0.8rem; }
+        button.btn-approve { background-color: #43A047; padding: 5px 10px; font-size: 0.8rem; }
+
+        .course-item {
+            border: 1px solid #EEE;
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 10px;
+            background: #FAFAFA;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .course-info h4 { margin: 0 0 4px 0; color: var(--text-dark); }
+        .course-info p { margin: 0; font-size: 0.85rem; color: #666; }
+
+        .status-tag {
+            display: inline-block;
+            font-size: 0.75rem;
+            padding: 2px 8px;
+            border-radius: 6px;
+            margin-top: 4px;
+        }
+        .status-requested { background: #FFF3E0; color: #E65100; }
+        .status-assigned { background: #E8F5E9; color: #2E7D32; }
+
+        /* 管理員時間衝突清單 */
+        .conflict-box {
+            background-color: var(--danger-bg);
+            border: 1px solid #FFCDD2;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .conflict-box h3 {
+            margin: 0 0 10px 0;
+            color: var(--danger-text);
+            font-size: 1.05rem;
+        }
+
+        .conflict-item {
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+            border-left: 4px solid var(--danger-text);
+        }
+
+        /* 週課表日曆容器 */
+        #calendar {
+            background: white;
+            padding: 10px;
+            border-radius: 12px;
+        }
+
+        .fc-col-header-cell-cushion {
+            font-size: 1rem;
+            color: var(--text-dark);
+            padding: 8px 0 !important;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>📅 管院空間與排課系統 — 學期課程排課模組</h1>
+    <div class="user-bar" id="headerUserBar" style="display:none;">
+        <span id="currentUserDisplay"></span>
+        <span id="currentRoleBadge" class="badge"></span>
+        <button class="btn-secondary" onclick="handleLogout()">登出</button>
+    </div>
+</header>
+
+<!-- ==========================================
+     區塊一：共用登入與註冊畫面
+     ========================================== -->
+<div class="auth-wrapper" id="authSection">
+    <div class="card">
+        <div class="auth-tabs">
+            <div class="auth-tab active" id="tabLogin" onclick="switchAuthTab('login')">帳號登入</div>
+            <div class="auth-tab" id="tabRegister" onclick="switchAuthTab('register')">申請註冊</div>
+        </div>
+
+        <form id="loginForm" onsubmit="handleLogin(event)">
+            <div class="form-group">
+                <label>登入帳號 (Username)</label>
+                <input type="text" id="loginUsername" placeholder="請輸入帳號（如 prof_wang 或 admin）" required>
+            </div>
+            <div class="form-group">
+                <label>密碼</label>
+                <input type="password" id="loginPassword" placeholder="請輸入密碼" required>
+            </div>
+            <button type="submit" style="width:100%; margin-top:8px;">登入系統</button>
+
+            <div class="demo-hint-box">
+                <strong>🧪 測試帳號（密碼皆為 <code>123456</code>）：</strong><br>
+                • 管理員：<code>admin</code>（審核帳號、指派課程、滑鼠拖曳週課表）<br>
+                • 老師一：<code>prof_wang</code>（王大明教授，僅可調整本人課程）<br>
+                • 老師二：<code>prof_lin</code>（林美玲教授，僅可調整本人課程）<br>
+                • 學生帳號：<code>s113213001</code>（測試非排課權限阻擋）
+            </div>
+        </form>
+
+        <form id="registerForm" style="display:none;" onsubmit="handleRegister(event)">
+            <div class="form-group">
+                <label>申請帳號 (Username)</label>
+                <input type="text" id="regUsername" placeholder="例如：prof_chen 或學號" required>
+            </div>
+            <div class="form-group">
+                <label>設定密碼</label>
+                <input type="password" id="regPassword" placeholder="請設定密碼" required>
+            </div>
+            <div class="form-group">
+                <label>真實姓名</label>
+                <input type="text" id="regFullName" placeholder="例如：陳志豪教授" required>
+            </div>
+            <div class="form-group">
+                <label>電子信箱 (Email)</label>
+                <input type="email" id="regEmail" placeholder="example@ncnu.edu.tw" required>
+            </div>
+            <div class="form-group">
+                <label>申請身分</label>
+                <select id="regRole">
+                    <option value="teacher">授課老師 (teacher)</option>
+                    <option value="student">學生 (student)</option>
+                </select>
+            </div>
+            <button type="submit" style="width:100%; margin-top:8px;">送出註冊申請（需待管理員審核）</button>
+        </form>
+    </div>
+</div>
+
+<!-- ==========================================
+     區塊二：學期排課主畫面
+     ========================================== -->
+<div class="container" id="mainAppSection" style="display:none;">
+    <!-- 左側欄：表單、課程清單、管理員帳號審核 -->
+    <div class="left-panel">
+        <div class="card">
+            <h2 id="formTitle">➕ 登記 / 新增學期排課</h2>
+            <form id="courseForm" onsubmit="handleSaveCourse(event)">
+                <input type="hidden" id="editCourseId" value="">
+                
+                <div class="form-group">
+                    <label>課程名稱</label>
+                    <input type="text" id="courseName" placeholder="例如：軟體工程" required>
+                </div>
+
+                <div class="form-group" id="teacherSelectGroup" style="display:none;">
+                    <label>指派授課老師（管理員專屬）</label>
+                    <select id="teacherId"></select>
+                </div>
+
+                <div class="form-group">
+                    <label>希望 / 指派教室</label>
+                    <select id="roomId" required></select>
+                </div>
+
+                <div class="form-group">
+                    <label>上課星期</label>
+                    <select id="dayOfWeek" required>
+                        <option value="1">星期一 (Monday)</option>
+                        <option value="2">星期二 (Tuesday)</option>
+                        <option value="3" selected>星期三 (Wednesday)</option>
+                        <option value="4">星期四 (Thursday)</option>
+                        <option value="5">星期五 (Friday)</option>
+                        <option value="6">星期六 (Saturday)</option>
+                        <option value="7">星期日 (Sunday)</option>
+                    </select>
+                </div>
+
+                <div class="time-row">
+                    <div class="form-group">
+                        <label>開始時間</label>
+                        <input type="time" id="startTime" value="09:10" required>
+                    </div>
+                    <div class="form-group">
+                        <label>結束時間</label>
+                        <input type="time" id="endTime" value="12:00" required>
+                    </div>
+                </div>
+
+                <div class="form-group" id="statusSelectGroup" style="display:none;">
+                    <label>排課狀態</label>
+                    <select id="scheduleStatus">
+                        <option value="requested">老師志願登記 (requested)</option>
+                        <option value="assigned">管理員已指派確認 (assigned)</option>
+                    </select>
+                </div>
+
+                <div style="display:flex; gap:8px; margin-top:14px;">
+                    <button type="submit" style="flex:1;" id="submitBtn">送出排課</button>
+                    <button type="button" class="btn-secondary" id="cancelEditBtn" style="display:none;" onclick="resetForm()">取消修改</button>
+                </div>
+            </form>
+        </div>
+
+        <div class="card">
+            <h2 id="listTitle">📋 我的排課清單</h2>
+            <div id="courseListContainer"></div>
+        </div>
+
+        <div class="card" id="userApprovalCard" style="display:none;">
+            <h2>👤 待審核帳號申請（管理員）</h2>
+            <div id="pendingUsersContainer"></div>
+        </div>
+    </div>
+
+    <!-- 右側欄：時間衝突警示（管理員）＋ 純星期週課表日曆 -->
+    <div class="right-panel">
+        <div class="conflict-box" id="conflictSection" style="display:none;">
+            <h3>⚠️ 時間衝突課程清單（同星期、同教室、時段重疊）</h3>
+            <div id="conflictList"></div>
+        </div>
+
+        <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <h2 style="border:none; margin:0;">🗓️ 學期排課狀態週課表</h2>
+                <span id="dragHint" style="font-size:0.85rem; color:#EC407A; font-weight:bold;"></span>
+            </div>
+            <div id="calendar"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ==========================================
+    // 連線設定：對應你目前的 uvicorn --port 8001
+    // ==========================================
+    const API_BASE = "http://127.0.0.1:8001/api";
+
+    const DAY_NAMES = {
+        1: '星期一',
+        2: '星期二',
+        3: '星期三',
+        4: '星期四',
+        5: '星期五',
+        6: '星期六',
+        7: '星期日'
+    };
+
+    const ANCHOR_DATES = {
+        1: '2026-11-16',
+        2: '2026-11-17',
+        3: '2026-11-18',
+        4: '2026-11-19',
+        5: '2026-11-20',
+        6: '2026-11-21',
+        7: '2026-11-22'
+    };
+
+    // 從後端 PostgreSQL 載入的快取資料
+    let dbRooms = [];
+    let dbTeachers = [];
+    let dbCourses = [];
+    let calendarInstance = null;
+
+    // ==========================================
+    // 1. 共用登入、註冊、審核與登出邏輯
+    // ==========================================
+    function switchAuthTab(tab) {
+        document.getElementById('tabLogin').classList.toggle('active', tab === 'login');
+        document.getElementById('tabRegister').classList.toggle('active', tab === 'register');
+        document.getElementById('loginForm').style.display = tab === 'login' ? 'block' : 'none';
+        document.getElementById('registerForm').style.display = tab === 'register' ? 'block' : 'none';
+    }
+
+    async function handleLogin(e) {
+        e.preventDefault();
+        const username = document.getElementById('loginUsername').value.trim();
+        const password = document.getElementById('loginPassword').value;
+
+        try {
+            const res = await fetch(`${API_BASE}/auth/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+
+            if (!res.ok) {
+                const err = await res.json();
+                alert(err.detail || '登入失敗');
+                return;
+            }
+
+            const matchedUser = await res.json();
+
+            if (matchedUser.role !== 'teacher' && matchedUser.role !== 'admin') {
+                alert(`您好 ${matchedUser.full_name}，您的身分為「學生」，課程排課模組僅限「授課老師」與「管理員」進入！`);
+                return;
+            }
+
+            localStorage.setItem('se_user', JSON.stringify(matchedUser));
+            document.getElementById('loginForm').reset();
+            checkAuthAndRender();
+        } catch (err) {
+            alert('無法連線至後端伺服器 (127.0.0.1:8001)，請確認 uvicorn 是否已啟動！');
+        }
+    }
+
+    async function handleRegister(e) {
+        e.preventDefault();
+        const payload = {
+            username: document.getElementById('regUsername').value.trim(),
+            password_hash: document.getElementById('regPassword').value,
+            full_name: document.getElementById('regFullName').value.trim(),
+            email: document.getElementById('regEmail').value.trim(),
+            role: document.getElementById('regRole').value
+        };
+
+        try {
+            const res = await fetch(`${API_BASE}/auth/register`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!res.ok) {
+                const err = await res.json();
+                alert(err.detail || '註冊失敗');
+                return;
+            }
+
+            alert('註冊申請已寫入資料庫！請切換為管理員 (admin) 審核通過後即可登入使用。');
+            document.getElementById('registerForm').reset();
+            switchAuthTab('login');
+        } catch (err) {
+            alert('無法連線至後端伺服器 (127.0.0.1:8001)！');
+        }
+    }
+
+    function handleLogout() {
+        localStorage.removeItem('se_user');
+        if (calendarInstance) {
+            calendarInstance.destroy();
+            calendarInstance = null;
+        }
+        checkAuthAndRender();
+    }
+
+    function getCurrentUser() {
+        const saved = localStorage.getItem('se_user');
+        return saved ? JSON.parse(saved) : null;
+    }
+
+    function checkAuthAndRender() {
+        const user = getCurrentUser();
+        const authSection = document.getElementById('authSection');
+        const mainAppSection = document.getElementById('mainAppSection');
+        const headerUserBar = document.getElementById('headerUserBar');
+
+        if (!user) {
+            authSection.style.display = 'block';
+            mainAppSection.style.display = 'none';
+            headerUserBar.style.display = 'none';
+        } else {
+            authSection.style.display = 'none';
+            mainAppSection.style.display = 'grid';
+            headerUserBar.style.display = 'flex';
+            initPage(user);
+        }
+    }
+
+    // ==========================================
+    // 2. 初始化主畫面並從 PostgreSQL 讀取最新選項
+    // ==========================================
+    async function initPage(user) {
+        document.getElementById('currentUserDisplay').textContent = `您好，${user.full_name}`;
+        document.getElementById('currentRoleBadge').textContent = user.role === 'admin' ? '系統管理員' : '授課老師';
+
+        try {
+            const optRes = await fetch(`${API_BASE}/schedules/options`);
+            if (!optRes.ok) throw new Error('選項 API 錯誤');
+            const optData = await optRes.json();
+            dbRooms = optData.rooms || [];
+            dbTeachers = optData.teachers || [];
+        } catch (err) {
+            alert('讀取資料庫教室與教師名單失敗，請檢查資料庫連線與資料表欄位！');
+            return;
+        }
+
+        const roomSelect = document.getElementById('roomId');
+        roomSelect.innerHTML = dbRooms.map(r => 
+            `<option value="${r.room_id}">${r.room_code} - ${r.room_name}</option>`
+        ).join('');
+
+        if (user.role === 'admin') {
+            document.getElementById('teacherSelectGroup').style.display = 'block';
+            document.getElementById('statusSelectGroup').style.display = 'block';
+            document.getElementById('conflictSection').style.display = 'block';
+            document.getElementById('userApprovalCard').style.display = 'block';
+            document.getElementById('listTitle').textContent = '📋 所有老師課程總表（管理員）';
+            document.getElementById('dragHint').textContent = '💡 管理員可直接拖曳方塊調整星期與時段';
+
+            const teacherSelect = document.getElementById('teacherId');
+            teacherSelect.innerHTML = dbTeachers.map(t => 
+                `<option value="${t.user_id}">${t.full_name}</option>`
+            ).join('');
+        } else {
+            document.getElementById('teacherSelectGroup').style.display = 'none';
+            document.getElementById('statusSelectGroup').style.display = 'none';
+            document.getElementById('conflictSection').style.display = 'none';
+            document.getElementById('userApprovalCard').style.display = 'none';
+            document.getElementById('listTitle').textContent = '📋 我的排課清單（僅可調整本人課程）';
+            document.getElementById('dragHint').textContent = '🔒 唯讀檢視（僅管理員可拖曳調整）';
+        }
+
+        await refreshAllViews();
+    }
+
+    // ==========================================
+    // 3. 從 PostgreSQL 同步更新清單、衝突偵測與週課表
+    // ==========================================
+    async function refreshAllViews() {
+        const user = getCurrentUser();
+        if (!user) return;
+
+        const res = await fetch(`${API_BASE}/schedules/courses`);
+        if (!res.ok) {
+            alert('讀取排課資料失敗，請確認資料庫 courses 表是否有 day_of_week 欄位！');
+            return;
+        }
+        dbCourses = await res.json();
+
+        renderCourseList(dbCourses, user);
+        if (user.role === 'admin') {
+            renderConflictList(dbCourses);
+            const pendingRes = await fetch(`${API_BASE}/auth/pending-users`);
+            const pendingList = await pendingRes.json();
+            renderPendingUsers(pendingList);
+        }
+        renderCalendar(dbCourses, user);
+    }
+
+    function renderPendingUsers(pendingList) {
+        const container = document.getElementById('pendingUsersContainer');
+        if (!pendingList || pendingList.length === 0) {
+            container.innerHTML = '<p style="color:#888; font-size:0.9rem;">目前無待審核的註冊帳號。</p>';
+            return;
+        }
+
+        container.innerHTML = pendingList.map(u => `
+            <div class="course-item">
+                <div class="course-info">
+                    <h4>${u.full_name} (${u.username})</h4>
+                    <p>身分：${u.role === 'teacher' ? '授課老師' : '學生'} ｜ ${u.email}</p>
+                </div>
+                <div style="display:flex; gap:6px;">
+                    <button class="btn-approve" onclick="reviewUser(${u.user_id}, 'approved')">通過</button>
+                    <button class="btn-danger" onclick="reviewUser(${u.user_id}, 'rejected')">退件</button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    async function reviewUser(userId, newStatus) {
+        await fetch(`${API_BASE}/auth/users/${userId}/review`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ account_status: newStatus })
+        });
+        await initPage(getCurrentUser());
+    }
+
+    function renderCourseList(courses, user) {
+        const container = document.getElementById('courseListContainer');
+        const visibleCourses = user.role === 'admin' 
+            ? courses 
+            : courses.filter(c => c.teacher_id === user.user_id);
+
+        if (visibleCourses.length === 0) {
+            container.innerHTML = '<p style="color:#888; font-size:0.9rem;">目前尚無排課資料。</p>';
+            return;
+        }
+
+        container.innerHTML = visibleCourses.map(c => {
+            const room = dbRooms.find(r => r.room_id === c.room_id);
+            const teacher = dbTeachers.find(t => t.user_id === c.teacher_id);
+            const roomLabel = room ? `${room.room_code} ${room.room_name}` : '未指定教室';
+            const teacherLabel = teacher ? teacher.full_name : `老師ID:${c.teacher_id}`;
+            const statusClass = c.schedule_status === 'assigned' ? 'status-assigned' : 'status-requested';
+            const statusText = c.schedule_status === 'assigned' ? '已指派確認' : '志願登記中';
+
+            return `
+                <div class="course-item">
+                    <div class="course-info">
+                        <h4>${c.course_name}</h4>
+                        <p>👨‍🏫 ${teacherLabel} ｜ 🏫 ${roomLabel}</p>
+                        <p>🕒 每週<strong>${DAY_NAMES[c.day_of_week]}</strong> (${c.start_time.slice(0,5)} ~ ${c.end_time.slice(0,5)})</p>
+                        <span class="status-tag ${statusClass}">${statusText}</span>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:6px;">
+                        <button class="btn-edit" onclick="startEditCourse(${c.course_id})">修改</button>
+                        <button class="btn-danger" onclick="deleteCourse(${c.course_id})">刪除</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function renderConflictList(courses) {
+        const conflictDiv = document.getElementById('conflictList');
+        const conflicts = [];
+
+        for (let i = 0; i < courses.length; i++) {
+            for (let j = i + 1; j < courses.length; j++) {
+                const a = courses[i];
+                const b = courses[j];
+                if (a.day_of_week === b.day_of_week && a.room_id === b.room_id && a.room_id !== null) {
+                    if (a.start_time < b.end_time && b.start_time < a.end_time) {
+                        conflicts.push({ a, b });
+                    }
+                }
+            }
+        }
+
+        if (conflicts.length === 0) {
+            conflictDiv.innerHTML = '<div style="color:#2E7D32; font-size:0.9rem;">✅ 目前所有排課時段均無衝突！</div>';
+            return;
+        }
+
+        conflictDiv.innerHTML = conflicts.map(({ a, b }) => {
+            const room = dbRooms.find(r => r.room_id === a.room_id);
+            const tA = dbTeachers.find(u => u.user_id === a.teacher_id)?.full_name || '';
+            const tB = dbTeachers.find(u => u.user_id === b.teacher_id)?.full_name || '';
+            return `
+                <div class="conflict-item">
+                    <strong>教室 ${room?.room_code} 於每週「${DAY_NAMES[a.day_of_week]}」發生撞堂：</strong><br>
+                    • 「${a.course_name}」(${tA})：${a.start_time.slice(0,5)} - ${a.end_time.slice(0,5)}<br>
+                    • 「${b.course_name}」(${tB})：${b.start_time.slice(0,5)} - ${b.end_time.slice(0,5)}
+                </div>
+            `;
+        }).join('');
+    }
+
+    function renderCalendar(courses, user) {
+        const calendarEl = document.getElementById('calendar');
+        const isAdmin = user.role === 'admin';
+
+        const events = courses.map(c => {
+            const room = dbRooms.find(r => r.room_id === c.room_id);
+            const teacher = dbTeachers.find(u => u.user_id === c.teacher_id);
+            const anchorDate = ANCHOR_DATES[c.day_of_week];
+            return {
+                id: String(c.course_id),
+                title: `[${room?.room_code || '未定'}] ${c.course_name} (${teacher?.full_name || ''})`,
+                start: `${anchorDate}T${c.start_time}`,
+                end: `${anchorDate}T${c.end_time}`,
+                backgroundColor: c.schedule_status === 'assigned' ? '#EC407A' : '#FB8C00',
+                borderColor: 'transparent'
+            };
+        });
+
+        if (calendarInstance) {
+            calendarInstance.destroy();
+        }
+
+        calendarInstance = new FullCalendar.Calendar(calendarEl, {
+            initialView: 'timeGridWeek',
+            initialDate: '2026-11-16',
+            firstDay: 1,
+            headerToolbar: false,
+            dayHeaderFormat: { weekday: 'long' },
+            slotMinTime: '08:00:00',
+            slotMaxTime: '22:00:00',
+            allDaySlot: false,
+            height: 580,
+            events: events,
+            editable: isAdmin,
+            eventDrop: handleCalendarDragOrResize,
+            eventResize: handleCalendarDragOrResize
+        });
+
+        calendarInstance.render();
+    }
+
+    async function handleCalendarDragOrResize(info) {
+        const courseId = Number(info.event.id);
+        const startObj = info.event.start;
+        const endObj = info.event.end;
+
+        const jsDay = startObj.getDay();
+        const newDayOfWeek = jsDay === 0 ? 7 : jsDay;
+        const newStart = startObj.toTimeString().slice(0, 8);
+        const newEnd = endObj ? endObj.toTimeString().slice(0, 8) : newStart;
+
+        await fetch(`${API_BASE}/schedules/courses/${courseId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                day_of_week: newDayOfWeek,
+                start_time: newStart,
+                end_time: newEnd
+            })
+        });
+
+        await refreshAllViews();
+    }
+
+    // ==========================================
+    // 4. 新增 / 修改 / 刪除課程操作（直接寫入資料庫）
+    // ==========================================
+    async function handleSaveCourse(e) {
+        e.preventDefault();
+        const user = getCurrentUser();
+        const editId = document.getElementById('editCourseId').value;
+
+        const payload = {
+            course_name: document.getElementById('courseName').value.trim(),
+            teacher_id: user.role === 'admin' 
+                ? Number(document.getElementById('teacherId').value) 
+                : user.user_id,
+            room_id: Number(document.getElementById('roomId').value),
+            day_of_week: Number(document.getElementById('dayOfWeek').value),
+            start_time: document.getElementById('startTime').value + ':00',
+            end_time: document.getElementById('endTime').value + ':00',
+            schedule_status: user.role === 'admin' 
+                ? document.getElementById('scheduleStatus').value 
+                : 'requested'
+        };
+
+        if (payload.start_time >= payload.end_time) {
+            alert('結束時間必須晚於開始時間！');
+            return;
+        }
+
+        const url = editId ? `${API_BASE}/schedules/courses/${editId}` : `${API_BASE}/schedules/courses`;
+        const method = editId ? 'PUT' : 'POST';
+
+        const res = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            alert(err.detail || '儲存失敗');
+            return;
+        }
+
+        resetForm();
+        await refreshAllViews();
+    }
+
+    function startEditCourse(courseId) {
+        const course = dbCourses.find(c => c.course_id === courseId);
+        if (!course) return;
+
+        document.getElementById('editCourseId').value = course.course_id;
+        document.getElementById('courseName').value = course.course_name;
+        document.getElementById('roomId').value = course.room_id;
+        document.getElementById('dayOfWeek').value = course.day_of_week;
+        document.getElementById('startTime').value = course.start_time.slice(0, 5);
+        document.getElementById('endTime').value = course.end_time.slice(0, 5);
+
+        if (getCurrentUser().role === 'admin') {
+            document.getElementById('teacherId').value = course.teacher_id;
+            document.getElementById('scheduleStatus').value = course.schedule_status;
+        }
+
+        document.getElementById('formTitle').textContent = '✏️ 修改排課資料';
+        document.getElementById('submitBtn').textContent = '儲存修改';
+        document.getElementById('cancelEditBtn').style.display = 'inline-block';
+    }
+
+    async function deleteCourse(courseId) {
+        if (!confirm('確定要刪除這筆排課資料嗎？')) return;
+
+        await fetch(`${API_BASE}/schedules/courses/${courseId}`, { method: 'DELETE' });
+        await refreshAllViews();
+    }
+
+    function resetForm() {
+        document.getElementById('courseForm').reset();
+        document.getElementById('editCourseId').value = '';
+        document.getElementById('dayOfWeek').value = '3';
+        document.getElementById('formTitle').textContent = '➕ 登記 / 新增學期排課';
+        document.getElementById('submitBtn').textContent = '送出排課';
+        document.getElementById('cancelEditBtn').style.display = 'none';
+    }
+
+    checkAuthAndRender();
+</script>
+</body>
+</html>
