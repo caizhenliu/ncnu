@@ -170,6 +170,34 @@
             overflow: hidden;
         }
         .floor-plan.picking { cursor: crosshair; outline: 3px dashed var(--accent-pink-dark); outline-offset: 3px; }
+        /* 有實際平面圖照片的樓層：依照片比例顯示 */
+        .floor-plan.photo { aspect-ratio: auto; background: #FFF; border-width: 2px; }
+        .floor-plan.photo img { display: block; width: 100%; height: auto; user-select: none; -webkit-user-drag: none; }
+        /* 照片上已印有教室號碼，所以平常只顯示小圓點，選取時才顯示標籤 */
+        .floor-plan.photo .marker {
+            width: 16px; height: 16px; padding: 0;
+            border-radius: 50%;
+            border: 3px solid #FFF;
+            background: var(--accent-pink-dark);
+            box-shadow: 0 0 0 2px var(--accent-pink-dark), 0 2px 6px rgba(0,0,0,0.3);
+            font-size: 0;
+        }
+        .floor-plan.photo .marker:hover { transform: translate(-50%, -50%) scale(1.3); }
+        .floor-plan.photo .marker.inactive { background: #9E9E9E; box-shadow: 0 0 0 2px #9E9E9E; }
+        .floor-plan.photo .marker.selected {
+            width: auto; height: auto;
+            padding: 3px 8px;
+            border-radius: 8px;
+            border: 2px solid #FFF;
+            font-size: 0.8rem;
+            color: #FFF;
+            animation: pulse 1.6s ease-in-out infinite;
+        }
+        .floor-plan.photo .marker.pin { width: auto; height: auto; padding: 3px 8px; border-radius: 8px; font-size: 0.8rem; box-shadow: none; }
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 0 2px var(--accent-pink-dark), 0 0 0 0 rgba(236, 64, 122, 0.5); }
+            50% { box-shadow: 0 0 0 2px var(--accent-pink-dark), 0 0 0 8px rgba(236, 64, 122, 0); }
+        }
         .plan-zone {
             position: absolute;
             left: 3%; right: 3%;
@@ -322,7 +350,7 @@
             <h2>🗺️ 管院平面圖</h2>
             <div class="floor-tabs" id="floorTabs"></div>
             <div class="floor-plan" id="floorPlan"></div>
-            <div class="placeholder-hint">點選平面圖上的教室可查看詳細資料。平面圖為示意配置，實際位置以現場為準。</div>
+            <div class="placeholder-hint" id="planHint"></div>
         </div>
 
         <div class="card" id="detailCard">
@@ -418,6 +446,12 @@
 <script>
     const API = '/api';
     const FLOOR_ORDER = ['B1', '1F', '2F', '3F', '4F', '5F'];
+    // 管院各樓層實際平面圖（現場樓層簡介看板照片）；沒有照片的樓層顯示示意圖
+    const FLOOR_PLAN_IMAGES = {
+        '2F': '/static/floorplan/2F.png',
+        '3F': '/static/floorplan/3F.png',
+        '4F': '/static/floorplan/4F.png'
+    };
 
     let rooms = [];              // 目前查詢結果
     let selectedRoomId = null;
@@ -569,13 +603,20 @@
     function renderPlan(pin) {
         const plan = document.getElementById('floorPlan');
         const onFloor = rooms.filter(r => r.floor === currentFloor && r.map_x != null && r.map_y != null);
+        const image = FLOOR_PLAN_IMAGES[currentFloor];
+        plan.classList.toggle('photo', !!image);
+        document.getElementById('planHint').textContent = image
+            ? '點選平面圖上的教室可查看詳細資料。平面圖取自管院各樓層的樓層簡介看板。'
+            : '點選平面圖上的教室可查看詳細資料。此樓層尚無實際平面圖，目前為示意配置。';
         plan.innerHTML = `
-            <div class="plan-zone top"></div>
-            <div class="plan-zone bottom"></div>
-            <div class="plan-corridor">走 廊</div>
-            <div class="plan-core" style="left:1%;">樓梯</div>
-            <div class="plan-core" style="right:1%;">電梯<br>樓梯</div>
-            <div class="plan-label">管理學院 ${escapeHtml(currentFloor ?? '')}（示意圖）</div>
+            ${image
+                ? `<img src="${image}" alt="管理學院 ${escapeHtml(currentFloor)} 平面圖" draggable="false">`
+                : `<div class="plan-zone top"></div>
+                   <div class="plan-zone bottom"></div>
+                   <div class="plan-corridor">走 廊</div>
+                   <div class="plan-core" style="left:1%;">樓梯</div>
+                   <div class="plan-core" style="right:1%;">電梯<br>樓梯</div>
+                   <div class="plan-label">管理學院 ${escapeHtml(currentFloor ?? '')}（示意圖）</div>`}
             ${onFloor.map(r => `
                 <div class="marker ${r.room_id === selectedRoomId ? 'selected' : ''} ${r.is_active ? '' : 'inactive'}"
                      style="left:${r.map_x}%; top:${r.map_y}%;"
